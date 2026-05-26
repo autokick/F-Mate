@@ -31,14 +31,20 @@ import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.ArrowOutward
 import androidx.compose.material.icons.filled.AssistantDirection
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsSoccer
 import androidx.compose.material.icons.filled.StackedBarChart
 import androidx.compose.material.icons.filled.Tune
@@ -87,11 +93,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yangpa.fmate.data.DemoSnapshot
+import com.yangpa.fmate.data.LocalDemoStore
 import com.yangpa.fmate.model.MatchCardData
 import com.yangpa.fmate.model.MatchFilter
 import com.yangpa.fmate.model.PlayerProfile
@@ -126,21 +135,43 @@ private val dateOnlyFormatter = DateTimeFormatter.ofPattern("MM.dd (E)", Locale.
 @Composable
 fun FMateApp() {
     FMateTheme {
+        val context = LocalContext.current
+        val demoStore = remember(context) { LocalDemoStore(context) }
+        val initialSnapshot = remember(demoStore) { demoStore.load() }
+
         Surface(color = WarmSand) {
+            val defaultMatches = remember { sampleMatches() }
             val matches = remember {
                 mutableStateListOf<MatchCardData>().apply {
-                    addAll(sampleMatches())
+                    val storedMatches = initialSnapshot?.matches.orEmpty()
+                    val mergedMatches = if (storedMatches.isEmpty()) {
+                        defaultMatches
+                    } else {
+                        storedMatches + defaultMatches.filter { sample ->
+                            storedMatches.none { it.id == sample.id }
+                        }
+                    }
+                    addAll(mergedMatches)
                 }
             }
-            val joinedMatchIds = remember { mutableStateListOf("m2", "m3") }
+            val joinedMatchIds = remember {
+                mutableStateListOf<String>().apply {
+                    addAll(initialSnapshot?.joinedMatchIds ?: listOf("m2", "m3"))
+                }
+            }
+            val bookmarkedMatchIds = remember {
+                mutableStateListOf<String>().apply {
+                    addAll(initialSnapshot?.bookmarkedMatchIds ?: listOf("m1", "m5"))
+                }
+            }
             val snackbarHostState = remember { SnackbarHostState() }
             val scope = rememberCoroutineScope()
 
-            var enteredApp by remember { mutableStateOf(false) }
-            var displayName by remember { mutableStateOf("이민수") }
+            var enteredApp by remember { mutableStateOf(initialSnapshot?.enteredApp ?: false) }
+            var displayName by remember { mutableStateOf(initialSnapshot?.displayName ?: "홍길동") }
             var profile by remember {
                 mutableStateOf(
-                    PlayerProfile(
+                    initialSnapshot?.profile ?: PlayerProfile(
                         position = "윙어",
                         skill = "중급",
                         timePreference = "야간",
@@ -153,6 +184,26 @@ fun FMateApp() {
                 scope.launch {
                     snackbarHostState.showSnackbar(text)
                 }
+            }
+
+            fun persistState(
+                nextMatches: List<MatchCardData> = matches.toList(),
+                nextJoinedMatchIds: List<String> = joinedMatchIds.toList(),
+                nextBookmarkedMatchIds: List<String> = bookmarkedMatchIds.toList(),
+                nextDisplayName: String = displayName,
+                nextProfile: PlayerProfile = profile,
+                nextEnteredApp: Boolean = enteredApp,
+            ) {
+                demoStore.save(
+                    DemoSnapshot(
+                        matches = nextMatches,
+                        joinedMatchIds = nextJoinedMatchIds,
+                        bookmarkedMatchIds = nextBookmarkedMatchIds,
+                        displayName = nextDisplayName,
+                        profile = nextProfile,
+                        enteredApp = nextEnteredApp,
+                    ),
+                )
             }
 
             fun scoreMatch(match: MatchCardData): Int {
@@ -178,12 +229,26 @@ fun FMateApp() {
                 if (alreadyJoined) {
                     joinedMatchIds.remove(match.id)
                     matches[index] = match.copy(joinedCount = match.joinedCount - 1)
+                    persistState()
                     showMessage("참가를 취소했습니다.")
                 } else {
                     joinedMatchIds.add(match.id)
                     matches[index] = match.copy(joinedCount = match.joinedCount + 1)
+                    persistState()
                     showMessage("매치가 일정에 추가되었습니다.")
                 }
+            }
+
+            fun toggleBookmark(match: MatchCardData) {
+                val alreadyBookmarked = bookmarkedMatchIds.contains(match.id)
+                if (alreadyBookmarked) {
+                    bookmarkedMatchIds.remove(match.id)
+                    showMessage("관심 매치에서 제거했습니다.")
+                } else {
+                    bookmarkedMatchIds.add(match.id)
+                    showMessage("관심 매치에 추가했습니다.")
+                }
+                persistState()
             }
 
             val selectedMatch = selectedMatchId?.let { id -> matches.firstOrNull { it.id == id } }
@@ -191,8 +256,10 @@ fun FMateApp() {
             when {
                 !enteredApp -> EntryFlow(
                     onComplete = { name ->
-                        displayName = name.ifBlank { "이민수" }
+                        val nextDisplayName = name.ifBlank { "홍길동" }
+                        displayName = nextDisplayName
                         enteredApp = true
+                        persistState(nextDisplayName = nextDisplayName, nextEnteredApp = true)
                     },
                 )
 
@@ -200,8 +267,10 @@ fun FMateApp() {
                     match = selectedMatch,
                     joined = joinedMatchIds.contains(selectedMatch.id),
                     score = scoreMatch(selectedMatch),
+                    bookmarked = bookmarkedMatchIds.contains(selectedMatch.id),
                     onBack = { selectedMatchId = null },
                     onJoin = { toggleJoin(selectedMatch) },
+                    onBookmark = { toggleBookmark(selectedMatch) },
                     snackbarHostState = snackbarHostState,
                 )
 
@@ -209,15 +278,34 @@ fun FMateApp() {
                     displayName = displayName,
                     matches = matches,
                     joinedMatchIds = joinedMatchIds,
+                    bookmarkedMatchIds = bookmarkedMatchIds,
                     profile = profile,
                     scoreMatch = ::scoreMatch,
-                    onProfileChange = { profile = it },
+                    onProfileChange = {
+                        profile = it
+                        persistState(nextProfile = it)
+                    },
                     onOpenMatch = { selectedMatchId = it.id },
                     onToggleJoin = ::toggleJoin,
+                    onToggleBookmark = ::toggleBookmark,
                     onCreateMatch = { match ->
                         matches.add(0, match)
                         joinedMatchIds.add(match.id)
+                        persistState()
                         showMessage("새 매치를 만들고 일정에 바로 추가했습니다.")
+                    },
+                    onResetDemo = {
+                        demoStore.clear()
+                        matches.clear()
+                        matches.addAll(defaultMatches)
+                        joinedMatchIds.clear()
+                        joinedMatchIds.addAll(listOf("m2", "m3"))
+                        bookmarkedMatchIds.clear()
+                        bookmarkedMatchIds.addAll(listOf("m1", "m5"))
+                        profile = PlayerProfile(position = "윙어", skill = "중급", timePreference = "야간")
+                        displayName = "홍길동"
+                        enteredApp = false
+                        showMessage("시연 데이터를 초기화했습니다.")
                     },
                     snackbarHostState = snackbarHostState,
                     showMessage = ::showMessage,
@@ -254,8 +342,8 @@ private fun EntryFlow(onComplete: (String) -> Unit) {
 
     var pageIndex by remember { mutableStateOf(0) }
     var showLogin by remember { mutableStateOf(false) }
-    var nickname by remember { mutableStateOf("이민수") }
-    var email by remember { mutableStateOf("20220000@univ.ac.kr") }
+    var nickname by remember { mutableStateOf("홍길동") }
+    var email by remember { mutableStateOf("20220000@seoil.ac.kr") }
 
     if (showLogin) {
         LoginScreen(
@@ -475,12 +563,15 @@ private fun MainShell(
     displayName: String,
     matches: List<MatchCardData>,
     joinedMatchIds: List<String>,
+    bookmarkedMatchIds: List<String>,
     profile: PlayerProfile,
     scoreMatch: (MatchCardData) -> Int,
     onProfileChange: (PlayerProfile) -> Unit,
     onOpenMatch: (MatchCardData) -> Unit,
     onToggleJoin: (MatchCardData) -> Unit,
+    onToggleBookmark: (MatchCardData) -> Unit,
     onCreateMatch: (MatchCardData) -> Unit,
+    onResetDemo: () -> Unit,
     snackbarHostState: SnackbarHostState,
     showMessage: (String) -> Unit,
 ) {
@@ -524,10 +615,12 @@ private fun MainShell(
                 FMateTab.Matches -> MatchListScreen(
                     matches = matches,
                     joinedMatchIds = joinedMatchIds,
+                    bookmarkedMatchIds = bookmarkedMatchIds,
                     profile = profile,
                     scoreMatch = scoreMatch,
                     onOpenMatch = onOpenMatch,
                     onToggleJoin = onToggleJoin,
+                    onToggleBookmark = onToggleBookmark,
                     onCreateClick = { selectedTab = FMateTab.Create },
                 )
 
@@ -549,7 +642,11 @@ private fun MainShell(
                     displayName = displayName,
                     profile = profile,
                     bestScore = matches.maxOfOrNull(scoreMatch) ?: 0,
+                    joinedCount = joinedMatchIds.size,
+                    createdCount = matches.count { it.createdByUser },
+                    bookmarkedCount = bookmarkedMatchIds.size,
                     onProfileChange = onProfileChange,
+                    onResetDemo = onResetDemo,
                 )
             }
         }
@@ -599,22 +696,36 @@ private fun AppHeader(displayName: String, onProfileClick: () -> Unit) {
 private fun MatchListScreen(
     matches: List<MatchCardData>,
     joinedMatchIds: List<String>,
+    bookmarkedMatchIds: List<String>,
     profile: PlayerProfile,
     scoreMatch: (MatchCardData) -> Int,
     onOpenMatch: (MatchCardData) -> Unit,
     onToggleJoin: (MatchCardData) -> Unit,
+    onToggleBookmark: (MatchCardData) -> Unit,
     onCreateClick: () -> Unit,
 ) {
     var selectedFilter by remember { mutableStateOf(MatchFilter.All) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedSurface by remember { mutableStateOf("전체 구장") }
+    var showBookmarkedOnly by remember { mutableStateOf(false) }
     val rankedMatches = matches.sortedByDescending(scoreMatch)
     val bestMatch = rankedMatches.firstOrNull()
+    val surfaceOptions = listOf("전체 구장") + matches.map { it.surface }.distinct()
     val filteredMatches = rankedMatches.filter { match ->
-        when (selectedFilter) {
+        val matchesLevel = when (selectedFilter) {
             MatchFilter.All -> true
             MatchFilter.Beginner -> match.level == "초급"
             MatchFilter.Intermediate -> match.level == "중급"
             MatchFilter.Night -> match.timeTag == "야간"
         }
+        val matchesSearch = searchQuery.isBlank() ||
+            match.title.contains(searchQuery, ignoreCase = true) ||
+            match.location.contains(searchQuery, ignoreCase = true) ||
+            match.hostName.contains(searchQuery, ignoreCase = true)
+        val matchesSurface = selectedSurface == "전체 구장" || match.surface == selectedSurface
+        val matchesBookmark = !showBookmarkedOnly || bookmarkedMatchIds.contains(match.id)
+
+        matchesLevel && matchesSearch && matchesSurface && matchesBookmark
     }
 
     LazyColumn(
@@ -628,21 +739,23 @@ private fun MatchListScreen(
                     score = scoreMatch(bestMatch),
                     profile = profile,
                     joined = joinedMatchIds.contains(bestMatch.id),
+                    bookmarked = bookmarkedMatchIds.contains(bestMatch.id),
                     scheduledCount = joinedMatchIds.size,
                     onOpen = { onOpenMatch(bestMatch) },
                     onJoin = { onToggleJoin(bestMatch) },
+                    onBookmark = { onToggleBookmark(bestMatch) },
                 )
             }
         }
 
         item {
             Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                MetricCard("참가 중 일정", joinedMatchIds.size.toString(), FieldGreen)
-                MetricCard("직접 만든 매치", matches.count { it.createdByUser }.toString(), CitrusOrange)
-                MetricCard("추천 최고 점수", "${bestMatch?.let(scoreMatch) ?: 0}%", TeamBlue)
+                MetricCard("참가 일정", joinedMatchIds.size.toString(), FieldGreen, modifier = Modifier.weight(1f))
+                MetricCard("개설 매치", matches.count { it.createdByUser }.toString(), CitrusOrange, modifier = Modifier.weight(1f))
+                MetricCard("최고 점수", "${bestMatch?.let(scoreMatch) ?: 0}%", TeamBlue, modifier = Modifier.weight(1f))
             }
         }
 
@@ -650,7 +763,18 @@ private fun MatchListScreen(
             SectionHeading(
                 subtitle = "Discover",
                 title = "추천 매치",
-                caption = "프로필에 맞는 매치를 먼저 보여주고 참가 버튼은 일정 탭에 바로 반영됩니다.",
+                caption = "검색, 구장 타입, 관심 매치, 추천 점수를 조합해 실제 서비스처럼 탐색합니다.",
+            )
+        }
+
+        item {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("매치, 장소, 호스트 검색") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                singleLine = true,
             )
         }
 
@@ -659,6 +783,18 @@ private fun MatchListScreen(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                FilterChip(
+                    selected = showBookmarkedOnly,
+                    onClick = { showBookmarkedOnly = !showBookmarkedOnly },
+                    label = { Text("관심 매치") },
+                    leadingIcon = {
+                        Icon(
+                            if (showBookmarkedOnly) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
+                )
                 MatchFilter.entries.forEach { filter ->
                     FilterChip(
                         selected = selectedFilter == filter,
@@ -669,14 +805,40 @@ private fun MatchListScreen(
             }
         }
 
-        items(filteredMatches, key = { it.id }) { match ->
-            MatchCard(
-                match = match,
-                joined = joinedMatchIds.contains(match.id),
-                score = scoreMatch(match),
-                onTap = { onOpenMatch(match) },
-                onJoin = { onToggleJoin(match) },
-            )
+        item {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                surfaceOptions.forEach { surface ->
+                    FilterChip(
+                        selected = selectedSurface == surface,
+                        onClick = { selectedSurface = surface },
+                        label = { Text(surface) },
+                    )
+                }
+            }
+        }
+
+        if (filteredMatches.isEmpty()) {
+            item {
+                EmptyCard(
+                    title = "조건에 맞는 매치가 없습니다.",
+                    description = "검색어나 필터를 조금 풀어보면 추천 후보를 다시 찾을 수 있습니다.",
+                )
+            }
+        } else {
+            items(filteredMatches, key = { it.id }) { match ->
+                MatchCard(
+                    match = match,
+                    joined = joinedMatchIds.contains(match.id),
+                    bookmarked = bookmarkedMatchIds.contains(match.id),
+                    score = scoreMatch(match),
+                    onTap = { onOpenMatch(match) },
+                    onJoin = { onToggleJoin(match) },
+                    onBookmark = { onToggleBookmark(match) },
+                )
+            }
         }
 
         item {
@@ -691,9 +853,11 @@ private fun FeaturedMatchCard(
     score: Int,
     profile: PlayerProfile,
     joined: Boolean,
+    bookmarked: Boolean,
     scheduledCount: Int,
     onOpen: () -> Unit,
     onJoin: () -> Unit,
+    onBookmark: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -712,6 +876,19 @@ private fun FeaturedMatchCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TagChip("MATCHDAY PICK", bright = true)
                     Spacer(modifier = Modifier.weight(1f))
+                    IconButton(
+                        onClick = onBookmark,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = Color.White.copy(alpha = 0.14f),
+                            contentColor = Color.White,
+                        ),
+                    ) {
+                        Icon(
+                            if (bookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                            contentDescription = "관심 매치",
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         "$scheduledCount GAMES ON",
                         color = Color(0xFFE4F8E8),
@@ -732,7 +909,7 @@ private fun FeaturedMatchCard(
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 TagRow(
-                    tags = listOf("$score% 적합", match.level, match.timeTag, match.roleFocus),
+                    tags = listOf("$score% 적합", matchStatus(match).label, match.level, match.timeTag, match.roleFocus),
                     bright = true,
                 )
                 Spacer(modifier = Modifier.height(18.dp))
@@ -776,10 +953,17 @@ private fun FeaturedMatchCard(
                     }
                     OutlinedButton(
                         onClick = onJoin,
+                        enabled = joined || match.joinedCount < match.capacity,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                     ) {
-                        Text(if (joined) "참가 취소" else "바로 참가")
+                        Text(
+                            when {
+                                joined -> "참가 취소"
+                                match.joinedCount >= match.capacity -> "모집 마감"
+                                else -> "바로 참가"
+                            },
+                        )
                     }
                 }
             }
@@ -791,10 +975,14 @@ private fun FeaturedMatchCard(
 private fun MatchCard(
     match: MatchCardData,
     joined: Boolean,
+    bookmarked: Boolean,
     score: Int,
     onTap: () -> Unit,
     onJoin: () -> Unit,
+    onBookmark: () -> Unit,
 ) {
+    val status = matchStatus(match)
+
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -816,6 +1004,16 @@ private fun MatchCard(
                         color = MutedInk,
                         fontWeight = FontWeight.Bold,
                     )
+                    IconButton(
+                        onClick = onBookmark,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            if (bookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                            contentDescription = "관심 매치",
+                            tint = if (bookmarked) CitrusOrange else MutedInk,
+                        )
+                    }
                     TagChip("$score% 적합")
                 }
                 Spacer(modifier = Modifier.height(6.dp))
@@ -841,9 +1039,15 @@ private fun MatchCard(
                         modifier = Modifier.weight(1f),
                         fontWeight = FontWeight.Bold,
                     )
-                    Text(match.level, color = CitrusOrange, fontWeight = FontWeight.ExtraBold)
+                    Text(status.label, color = status.color, fontWeight = FontWeight.ExtraBold)
                 }
                 Spacer(modifier = Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Filled.Payments, contentDescription = null, tint = FieldGreen, modifier = Modifier.size(18.dp))
+                    Text("${match.fee}원", color = FieldGreen, fontWeight = FontWeight.Bold)
+                    Text("· ${match.hostRating}점 (${match.reviewCount})", color = MutedInk)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     match.notes,
                     maxLines = 2,
@@ -857,9 +1061,16 @@ private fun MatchCard(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     FilledTonalButton(
                         onClick = onJoin,
+                        enabled = joined || match.joinedCount < match.capacity,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text(if (joined) "참가 취소" else "참가 신청")
+                        Text(
+                            when {
+                                joined -> "참가 취소"
+                                match.joinedCount >= match.capacity -> "모집 마감"
+                                else -> "참가 신청"
+                            },
+                        )
                     }
                     IconButton(
                         onClick = onTap,
@@ -896,6 +1107,12 @@ private fun ScheduleScreen(matches: List<MatchCardData>) {
                 )
             }
         } else {
+            item {
+                ScheduleSummaryCard(
+                    nextMatch = scheduledMatches.first(),
+                    totalCount = scheduledMatches.size,
+                )
+            }
             items(scheduledMatches, key = { it.id }) { match ->
                 ScheduleCard(
                     match = match,
@@ -920,6 +1137,7 @@ private fun CreateMatchScreen(
     val timeOptions = listOf("10:00", "19:30", "20:30", "21:00")
     val levels = listOf("초급", "중급", "상급")
     val capacities = listOf(8, 10, 12, 14)
+    val feeOptions = listOf(8000, 10000, 12000, 15000)
 
     var title by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
@@ -928,6 +1146,7 @@ private fun CreateMatchScreen(
     var selectedTime by remember { mutableStateOf("20:30") }
     var selectedLevel by remember { mutableStateOf("중급") }
     var selectedCapacity by remember { mutableStateOf(10) }
+    var selectedFee by remember { mutableStateOf(12000) }
 
     LazyColumn(
         contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 24.dp),
@@ -948,6 +1167,7 @@ private fun CreateMatchScreen(
                 time = selectedTime,
                 level = selectedLevel,
                 capacity = selectedCapacity,
+                fee = selectedFee,
             )
         }
 
@@ -981,6 +1201,7 @@ private fun CreateMatchScreen(
                     OptionSection("날짜", dateOptions, selectedDate, label = ::formatDateOnly, onSelect = { selectedDate = it })
                     OptionSection("시간", timeOptions, selectedTime, onSelect = { selectedTime = it })
                     OptionSection("모집 인원", capacities, selectedCapacity, label = { "${it}명" }, onSelect = { selectedCapacity = it })
+                    OptionSection("참가비", feeOptions, selectedFee, label = { "${it}원" }, onSelect = { selectedFee = it })
 
                     OutlinedTextField(
                         value = notes,
@@ -1015,6 +1236,10 @@ private fun CreateMatchScreen(
                                 hostRating = 5.0,
                                 distanceKm = 1.2,
                                 createdByUser = true,
+                                fee = selectedFee,
+                                reviewCount = 0,
+                                checkInCode = "FM-${System.currentTimeMillis().toString().takeLast(4)}",
+                                amenities = listOf("직접 생성", "호스트 확인", selectedLevel),
                             )
                             onCreateMatch(match)
                             title = ""
@@ -1024,6 +1249,7 @@ private fun CreateMatchScreen(
                             selectedTime = "20:30"
                             selectedLevel = "중급"
                             selectedCapacity = 10
+                            selectedFee = 12000
                         },
                         modifier = Modifier.fillMaxWidth(),
                         contentPadding = PaddingValues(vertical = 16.dp),
@@ -1041,7 +1267,11 @@ private fun ProfileScreen(
     displayName: String,
     profile: PlayerProfile,
     bestScore: Int,
+    joinedCount: Int,
+    createdCount: Int,
+    bookmarkedCount: Int,
     onProfileChange: (PlayerProfile) -> Unit,
+    onResetDemo: () -> Unit,
 ) {
     val positions = listOf("윙어", "피보", "수비", "골키퍼")
     val levels = listOf("초급", "중급", "상급")
@@ -1097,6 +1327,15 @@ private fun ProfileScreen(
                         tags = listOf(profile.position, profile.skill, profile.timePreference, "추천 ${bestScore}점"),
                     )
 
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        MetricCard("참가 일정", joinedCount.toString(), FieldGreen)
+                        MetricCard("개설 매치", createdCount.toString(), CitrusOrange)
+                        MetricCard("관심 매치", bookmarkedCount.toString(), TeamBlue)
+                    }
+
                     OptionSection("포지션", positions, profile.position, onSelect = {
                         onProfileChange(profile.copy(position = it))
                     })
@@ -1106,6 +1345,16 @@ private fun ProfileScreen(
                     OptionSection("선호 시간", timePreferences, profile.timePreference, onSelect = {
                         onProfileChange(profile.copy(timePreference = it))
                     })
+
+                    OutlinedButton(
+                        onClick = onResetDemo,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(vertical = 14.dp),
+                    ) {
+                        Icon(Icons.Filled.RestartAlt, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("시연 데이터 초기화")
+                    }
                 }
             }
         }
@@ -1129,8 +1378,10 @@ private fun MatchDetailScreen(
     match: MatchCardData,
     joined: Boolean,
     score: Int,
+    bookmarked: Boolean,
     onBack: () -> Unit,
     onJoin: () -> Unit,
+    onBookmark: () -> Unit,
     snackbarHostState: SnackbarHostState,
 ) {
     Scaffold(
@@ -1138,6 +1389,7 @@ private fun MatchDetailScreen(
         bottomBar = {
             Button(
                 onClick = onJoin,
+                enabled = joined || match.joinedCount < match.capacity,
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
@@ -1147,7 +1399,13 @@ private fun MatchDetailScreen(
                 ),
                 contentPadding = PaddingValues(vertical = 16.dp),
             ) {
-                Text(if (joined) "참가 취소하기" else "이 매치 참가하기")
+                Text(
+                    when {
+                        joined -> "참가 취소하기"
+                        match.joinedCount >= match.capacity -> "모집 마감"
+                        else -> "이 매치 참가하기"
+                    },
+                )
             }
         },
     ) { innerPadding ->
@@ -1177,6 +1435,19 @@ private fun MatchDetailScreen(
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로")
                     }
+                    IconButton(
+                        onClick = onBookmark,
+                        modifier = Modifier.align(Alignment.TopEnd),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = Color.White.copy(alpha = 0.18f),
+                            contentColor = Color.White,
+                        ),
+                    ) {
+                        Icon(
+                            if (bookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                            contentDescription = "관심 매치",
+                        )
+                    }
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
@@ -1186,7 +1457,10 @@ private fun MatchDetailScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(match.title, color = Color.White, style = MaterialTheme.typography.headlineLarge)
                         Spacer(modifier = Modifier.height(12.dp))
-                        TagRow(tags = listOf("$score% 적합", match.level, match.timeTag, match.roleFocus), bright = true)
+                        TagRow(
+                            tags = listOf("$score% 적합", matchStatus(match).label, match.level, match.timeTag, match.roleFocus),
+                            bright = true,
+                        )
                     }
                 }
             }
@@ -1197,6 +1471,13 @@ private fun MatchDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     InfoGrid(match = match, score = score)
+                    DetailSection(title = "참가 안내") {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            DetailInfoRow(Icons.Filled.QrCode2, "현장 체크인 코드", match.checkInCode)
+                            DetailInfoRow(Icons.Filled.Payments, "참가비", "${match.fee}원 · 현장 결제")
+                            DetailInfoRow(Icons.Filled.Groups, "모집 상태", "${match.joinedCount}/${match.capacity}명 · ${matchStatus(match).label}")
+                        }
+                    }
                     DetailSection(title = "매치 설명") {
                         Text(match.notes, style = MaterialTheme.typography.bodyLarge, color = Color(0xFF314032))
                     }
@@ -1215,11 +1496,14 @@ private fun MatchDetailScreen(
                             Column {
                                 Text(match.hostName, style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    "매너 점수 ${"%.1f".format(match.hostRating)} / 5.0 · 응답 빠름",
+                                    "매너 점수 ${"%.1f".format(match.hostRating)} / 5.0 · 리뷰 ${match.reviewCount}개 · 응답 빠름",
                                     color = MutedInk,
                                 )
                             }
                         }
+                    }
+                    DetailSection(title = "시설 정보") {
+                        TagRow(tags = match.amenities.ifEmpty { listOf(match.surface, "조끼", "주차 확인 필요") })
                     }
                 }
             }
@@ -1290,7 +1574,27 @@ private fun DetailSection(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun HostPreviewCard(title: String, date: LocalDate, time: String, level: String, capacity: Int) {
+private fun DetailInfoRow(icon: ImageVector, label: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFFEDF7EF)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = FieldGreen, modifier = Modifier.size(20.dp))
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, color = MutedInk, style = MaterialTheme.typography.bodyMedium)
+            Text(value, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun HostPreviewCard(title: String, date: LocalDate, time: String, level: String, capacity: Int, fee: Int) {
     Card(
         colors = CardDefaults.cardColors(containerColor = PitchDark),
         shape = RoundedCornerShape(26.dp),
@@ -1321,7 +1625,52 @@ private fun HostPreviewCard(title: String, date: LocalDate, time: String, level:
                 Text("HOST PREVIEW", color = Color(0xFFDDF5E3), fontWeight = FontWeight.Bold)
                 Text(title, color = Color.White, style = MaterialTheme.typography.titleLarge)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("$time · $level · ${capacity}명 모집", color = Color(0xFFDDF7E4))
+                Text("$time · $level · ${capacity}명 모집 · ${fee}원", color = Color(0xFFDDF7E4))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleSummaryCard(nextMatch: MatchCardData, totalCount: Int) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = PitchDark),
+        shape = RoundedCornerShape(26.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Brush.linearGradient(listOf(PitchDark, FieldGreen)))
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(62.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = Color.White)
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("NEXT MATCH", color = Color(0xFFDDF5E3), fontWeight = FontWeight.Bold)
+                Text(nextMatch.title, color = Color.White, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    "${formatMatchDateTime(nextMatch.scheduledAt)} · 체크인 ${nextMatch.checkInCode}",
+                    color = Color(0xFFDDF7E4),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(totalCount.toString(), color = Color.White, fontWeight = FontWeight.ExtraBold)
             }
         }
     }
@@ -1347,6 +1696,14 @@ private fun ScheduleCard(match: MatchCardData, statusLabel: String) {
                     color = MutedInk,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.QrCode2, contentDescription = null, tint = FieldGreen, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("체크인 ${match.checkInCode}", color = FieldGreen, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("참가비 ${match.fee}원", color = MutedInk)
+                }
             }
             Spacer(modifier = Modifier.width(10.dp))
             TagChip(statusLabel)
@@ -1452,9 +1809,9 @@ private fun EmptyCard(title: String, description: String) {
 }
 
 @Composable
-private fun MetricCard(label: String, value: String, accent: Color) {
+private fun MetricCard(label: String, value: String, accent: Color, modifier: Modifier = Modifier.width(158.dp)) {
     Card(
-        modifier = Modifier.width(158.dp),
+        modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(22.dp),
     ) {
@@ -1621,6 +1978,20 @@ private fun PitchLines(alpha: Float) {
 private fun formatMatchDateTime(dateTime: LocalDateTime): String = dateTime.format(dateTimeFormatter)
 
 private fun formatDateOnly(date: LocalDate): String = date.format(dateOnlyFormatter)
+
+private fun matchStatus(match: MatchCardData): MatchStatus {
+    val remaining = match.capacity - match.joinedCount
+    return when {
+        remaining <= 0 -> MatchStatus("모집 마감", TeamBlue)
+        remaining <= 2 -> MatchStatus("마감 임박", CitrusOrange)
+        else -> MatchStatus("모집 중", FieldGreen)
+    }
+}
+
+private data class MatchStatus(
+    val label: String,
+    val color: Color,
+)
 
 private data class OnboardingSlide(
     val title: String,
