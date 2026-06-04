@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "595998962980",
+    "project_id": "f-mate",
+    "storage_bucket": "f-mate.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:595998962980:android:48fb50c9083cc3be442fb1",
+        "android_client_info": {
+          "package_name": "com.yangpa.fmate"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9BmuO7TsJ6MjZTEvXdklLgGn5JmHV3M0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
