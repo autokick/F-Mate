@@ -1,5 +1,11 @@
 package com.yangpa.fmate.ui
 
+import com.yangpa.fmate.data.ChatMessageData
+import com.yangpa.fmate.data.sendMessageToFirebase
+import com.yangpa.fmate.data.loadMessagesFromFirebase
+import com.yangpa.fmate.data.saveUserToFirebase
+import com.yangpa.fmate.data.UserProfile
+import com.yangpa.fmate.data.loadUsersFromFirebase
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -120,6 +126,11 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.yangpa.fmate.data.updateUserProfileToFirebase
+import com.yangpa.fmate.data.saveUserToFirebase
+import com.yangpa.fmate.data.updateUserProfileToFirebase
+import com.yangpa.fmate.data.addFriendToFirebase
+import com.yangpa.fmate.data.loadFriendsFromFirebase
 
 private val appBackground = Brush.verticalGradient(
     listOf(Color(0xFFF8F3E8), Color(0xFFF1EADB)),
@@ -169,6 +180,7 @@ fun FMateApp() {
 
             var enteredApp by remember { mutableStateOf(initialSnapshot?.enteredApp ?: false) }
             var displayName by remember { mutableStateOf(initialSnapshot?.displayName ?: "홍길동") }
+            var userEmail by remember { mutableStateOf("20220000@seoil.ac.kr") }
             var profile by remember {
                 mutableStateOf(
                     initialSnapshot?.profile ?: PlayerProfile(
@@ -255,11 +267,24 @@ fun FMateApp() {
 
             when {
                 !enteredApp -> EntryFlow(
-                    onComplete = { name ->
+                    onComplete = { name, email ->
                         val nextDisplayName = name.ifBlank { "홍길동" }
+                        val nextEmail = email.ifBlank { "20220000@seoil.ac.kr" }
+
                         displayName = nextDisplayName
+                        userEmail = nextEmail
                         enteredApp = true
-                        persistState(nextDisplayName = nextDisplayName, nextEnteredApp = true)
+
+                        saveUserToFirebase(
+                            nickname = nextDisplayName,
+                            email = nextEmail,
+                            profile = profile
+                        )
+
+                        persistState(
+                            nextDisplayName = nextDisplayName,
+                            nextEnteredApp = true
+                        )
                     },
                 )
 
@@ -284,6 +309,11 @@ fun FMateApp() {
                     onProfileChange = {
                         profile = it
                         persistState(nextProfile = it)
+
+                        updateUserProfileToFirebase(
+                            email = userEmail,
+                            profile = it
+                        )
                     },
                     onOpenMatch = { selectedMatchId = it.id },
                     onToggleJoin = ::toggleJoin,
@@ -316,7 +346,7 @@ fun FMateApp() {
 }
 
 @Composable
-private fun EntryFlow(onComplete: (String) -> Unit) {
+private fun EntryFlow(onComplete: (String, String) -> Unit) {
     val slides = remember {
         listOf(
             OnboardingSlide(
@@ -352,7 +382,9 @@ private fun EntryFlow(onComplete: (String) -> Unit) {
             onNicknameChange = { nickname = it },
             onEmailChange = { email = it },
             onBack = { showLogin = false },
-            onEnter = { onComplete(nickname.trim()) },
+            onEnter = {
+                onComplete(nickname.trim(), email.trim())
+            },
         )
         return
     }
@@ -576,6 +608,10 @@ private fun MainShell(
     showMessage: (String) -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(FMateTab.Matches) }
+    var users by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
+    var friends by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
+    var selectedUser by remember { mutableStateOf<UserProfile?>(null) }
+    var chatUser by remember { mutableStateOf<UserProfile?>(null) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -611,43 +647,100 @@ private fun MainShell(
                 onProfileClick = { selectedTab = FMateTab.Profile },
             )
 
-            when (selectedTab) {
-                FMateTab.Matches -> MatchListScreen(
-                    matches = matches,
-                    joinedMatchIds = joinedMatchIds,
-                    bookmarkedMatchIds = bookmarkedMatchIds,
-                    profile = profile,
-                    scoreMatch = scoreMatch,
-                    onOpenMatch = onOpenMatch,
-                    onToggleJoin = onToggleJoin,
-                    onToggleBookmark = onToggleBookmark,
-                    onCreateClick = { selectedTab = FMateTab.Create },
+            if (chatUser != null) {
+                ChatScreen(
+                    myEmail = displayName,
+                    user = chatUser!!,
+                    onBack = {
+                        chatUser = null
+                    }
                 )
+            } else {
+                when (selectedTab) {
+                    FMateTab.Matches -> MatchListScreen(
+                        matches = matches,
+                        joinedMatchIds = joinedMatchIds,
+                        bookmarkedMatchIds = bookmarkedMatchIds,
+                        profile = profile,
+                        scoreMatch = scoreMatch,
+                        onOpenMatch = onOpenMatch,
+                        onToggleJoin = onToggleJoin,
+                        onToggleBookmark = onToggleBookmark,
+                        onCreateClick = { selectedTab = FMateTab.Create },
+                    )
 
-                FMateTab.Schedule -> ScheduleScreen(
-                    matches = matches.filter { joinedMatchIds.contains(it.id) },
-                )
+                    FMateTab.Schedule -> ScheduleScreen(
+                        matches = matches.filter { joinedMatchIds.contains(it.id) },
+                    )
 
-                FMateTab.Create -> CreateMatchScreen(
-                    displayName = displayName,
-                    profile = profile,
-                    onCreateMatch = { match ->
-                        onCreateMatch(match)
-                        selectedTab = FMateTab.Schedule
-                    },
-                    showMessage = showMessage,
-                )
+                    FMateTab.Create -> CreateMatchScreen(
+                        displayName = displayName,
+                        profile = profile,
+                        onCreateMatch = { match ->
+                            onCreateMatch(match)
+                            selectedTab = FMateTab.Schedule
+                        },
+                        showMessage = showMessage,
+                    )
 
-                FMateTab.Profile -> ProfileScreen(
-                    displayName = displayName,
-                    profile = profile,
-                    bestScore = matches.maxOfOrNull(scoreMatch) ?: 0,
-                    joinedCount = joinedMatchIds.size,
-                    createdCount = matches.count { it.createdByUser },
-                    bookmarkedCount = bookmarkedMatchIds.size,
-                    onProfileChange = onProfileChange,
-                    onResetDemo = onResetDemo,
-                )
+                    FMateTab.Users -> {
+                        if (selectedUser == null) {
+                            FriendsScreen(
+                                users = users,
+                                friends = friends,
+                                onRefreshUsers = {
+                                    loadUsersFromFirebase(
+                                        onSuccess = { loadedUsers ->
+                                            users = loadedUsers
+                                        }
+                                    )
+                                },
+                                onRefreshFriends = {
+                                    loadFriendsFromFirebase(
+                                        myEmail = displayName,
+                                        onSuccess = { loadedFriends ->
+                                            friends = loadedFriends
+                                        }
+                                    )
+                                },
+                                onAddFriend = { user ->
+                                    addFriendToFirebase(
+                                        myEmail = displayName,
+                                        friend = user,
+                                        onSuccess = {
+                                            friends = friends + user
+                                            showMessage("친구로 추가했습니다.")
+                                        }
+                                    )
+                                },
+                                onUserClick = { user ->
+                                    selectedUser = user
+                                }
+                            )
+                        } else {
+                            UserDetailScreen(
+                                user = selectedUser!!,
+                                onBack = {
+                                    selectedUser = null
+                                },
+                                onChatClick = {
+                                    chatUser = selectedUser
+                                }
+                            )
+                        }
+                    }
+
+                    FMateTab.Profile -> ProfileScreen(
+                        displayName = displayName,
+                        profile = profile,
+                        bestScore = matches.maxOfOrNull(scoreMatch) ?: 0,
+                        joinedCount = joinedMatchIds.size,
+                        createdCount = matches.count { it.createdByUser },
+                        bookmarkedCount = bookmarkedMatchIds.size,
+                        onProfileChange = onProfileChange,
+                        onResetDemo = onResetDemo,
+                    )
+                }
             }
         }
     }
@@ -1263,7 +1356,180 @@ private fun CreateMatchScreen(
 }
 
 @Composable
+private fun FriendsScreen(
+    users: List<UserProfile>,
+    friends: List<UserProfile>,
+    onRefreshUsers: () -> Unit,
+    onRefreshFriends: () -> Unit,
+    onAddFriend: (UserProfile) -> Unit,
+    onUserClick: (UserProfile) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredUsers = users.filter { user ->
+        searchQuery.isBlank() ||
+            user.nickname.contains(searchQuery, ignoreCase = true) ||
+            user.email.contains(searchQuery, ignoreCase = true)
+    }
+
+    val friendEmails = friends.map { it.email }.toSet()
+
+    LazyColumn(
+        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            SectionHeading(
+                subtitle = "Friends",
+                title = "친구",
+                caption = "유저를 검색해 친구로 추가하고, 친구 정보를 확인합니다.",
+            )
+        }
+
+        item {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("닉네임 또는 이메일 검색") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                singleLine = true,
+            )
+        }
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = onRefreshUsers,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 14.dp),
+                ) {
+                    Text("유저 검색")
+                }
+
+                OutlinedButton(
+                    onClick = onRefreshFriends,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 14.dp),
+                ) {
+                    Text("내 친구")
+                }
+            }
+        }
+
+        item {
+            SectionHeading(
+                subtitle = "My Friends",
+                title = "내 친구 목록",
+                caption = "친구로 추가한 유저입니다.",
+            )
+        }
+
+        if (friends.isEmpty()) {
+            item {
+                EmptyCard(
+                    title = "아직 추가한 친구가 없습니다.",
+                    description = "유저를 검색한 뒤 친구 추가를 눌러보세요.",
+                )
+            }
+        } else {
+            items(friends) { friend ->
+                ElevatedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onUserClick(friend) },
+                    colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(24.dp),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(friend.nickname.ifBlank { "이름 없음" }, style = MaterialTheme.typography.titleLarge)
+                        Text(friend.email, color = MutedInk)
+                        Text(
+                            "${friend.position} | ${friend.skill} | ${friend.timePreference} 선호",
+                            color = MutedInk,
+                        )
+                        Text(
+                            friend.statusMessage.ifBlank { "상태 메시지가 없습니다." },
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            SectionHeading(
+                subtitle = "Search Result",
+                title = "검색 결과",
+                caption = "친구로 추가할 유저를 선택하세요.",
+            )
+        }
+
+        if (filteredUsers.isEmpty()) {
+            item {
+                EmptyCard(
+                    title = "검색 결과가 없습니다.",
+                    description = "유저 검색 버튼을 누르거나 검색어를 다시 입력해보세요.",
+                )
+            }
+        } else {
+            items(filteredUsers) { user ->
+                val alreadyFriend = friendEmails.contains(user.email)
+
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(24.dp),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(user.nickname.ifBlank { "이름 없음" }, style = MaterialTheme.typography.titleLarge)
+                        Text(user.email, color = MutedInk)
+
+                        Text(
+                            "${user.position} | ${user.skill} | ${user.timePreference} 선호",
+                            color = MutedInk,
+                        )
+
+                        Text(
+                            user.statusMessage.ifBlank { "상태 메시지가 없습니다." },
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilledTonalButton(
+                                onClick = { onUserClick(user) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("정보 확인")
+                            }
+
+                            Button(
+                                onClick = { onAddFriend(user) },
+                                enabled = !alreadyFriend,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(if (alreadyFriend) "친구 추가됨" else "친구 추가")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+@Composable
 private fun ProfileScreen(
+
     displayName: String,
     profile: PlayerProfile,
     bestScore: Int,
@@ -1319,6 +1585,13 @@ private fun ProfileScreen(
                             Text(
                                 "${profile.position} | ${profile.skill} | ${profile.timePreference} 선호",
                                 color = MutedInk,
+
+                            )
+
+                            Text(
+                                text = profile.statusMessage,
+                                color = MutedInk,
+                                style = MaterialTheme.typography.bodyMedium
                             )
                         }
                     }
@@ -1345,6 +1618,16 @@ private fun ProfileScreen(
                     OptionSection("선호 시간", timePreferences, profile.timePreference, onSelect = {
                         onProfileChange(profile.copy(timePreference = it))
                     })
+                    OutlinedTextField(
+                        value = profile.statusMessage,
+                        onValueChange = {
+                            onProfileChange(profile.copy(statusMessage = it))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("상태 메시지") },
+                        placeholder = { Text("예: 풋살 같이 할 친구 구해요!") },
+                        minLines = 2
+                    )
 
                     OutlinedButton(
                         onClick = onResetDemo,
@@ -1373,6 +1656,98 @@ private fun ProfileScreen(
     }
 }
 
+@Composable
+private fun UserDetailScreen(
+    user: UserProfile,
+    onBack: () -> Unit,
+    onChatClick: () -> Unit
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onBack,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors()
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로")
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Text(
+                    text = "프로필 상세",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = Ink
+                )
+            }
+        }
+
+        item {
+            ElevatedCard(
+                colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFFFFF9ED)),
+                shape = RoundedCornerShape(28.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(22.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(82.dp)
+                            .clip(RoundedCornerShape(26.dp))
+                            .background(Color(0x140F8F43)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.Person,
+                            contentDescription = null,
+                            tint = FieldGreen,
+                            modifier = Modifier.size(44.dp)
+                        )
+                    }
+
+                    Text(
+                        text = user.nickname.ifBlank { "이름 없음" },
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Ink
+                    )
+
+                    Text(
+                        text = user.email,
+                        color = MutedInk
+                    )
+
+                    TagRow(
+                        tags = listOf(
+                            user.position.ifBlank { "포지션 미입력" },
+                            user.skill.ifBlank { "실력 미입력" },
+                            user.timePreference.ifBlank { "시간 미입력" }
+                        )
+                    )
+
+                    Text(
+                        text = user.statusMessage.ifBlank { "상태 메시지가 없습니다." },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Ink
+                    )
+
+                    Button(
+                        onClick = onChatClick,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(vertical = 16.dp),
+                    ) {
+                        Text("채팅하기")
+                    }
+                }
+            }
+        }
+    }
+}
 @Composable
 private fun MatchDetailScreen(
     match: MatchCardData,
@@ -1975,6 +2350,124 @@ private fun PitchLines(alpha: Float) {
     }
 }
 
+data class ChatMessage(
+    val text: String,
+    val isMine: Boolean
+)
+
+@Composable
+private fun ChatScreen(
+    myEmail: String,
+    user: UserProfile,
+    onBack: () -> Unit
+) {
+    var message by remember { mutableStateOf("") }
+    var messages by remember { mutableStateOf<List<ChatMessageData>>(emptyList()) }
+
+    fun refreshMessages() {
+        loadMessagesFromFirebase(
+            myEmail = myEmail,
+            friendEmail = user.email,
+            onSuccess = { loadedMessages ->
+                messages = loadedMessages
+            }
+        )
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = null
+                )
+            }
+
+            Text(
+                text = user.nickname.ifBlank { "채팅" },
+                style = MaterialTheme.typography.titleLarge
+            )
+        }
+
+        Button(
+            onClick = { refreshMessages() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        ) {
+            Text("대화 불러오기")
+        }
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(messages) { msg ->
+                val isMine = msg.senderEmail == myEmail
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isMine) Color(0xFFD7F2DD) else Color.White
+                        )
+                    ) {
+                        Text(
+                            text = msg.text,
+                            modifier = Modifier.padding(12.dp),
+                            color = Ink
+                        )
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            OutlinedTextField(
+                value = message,
+                onValueChange = { message = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("메시지 입력") }
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Button(
+                onClick = {
+                    val text = message.trim()
+                    if (text.isNotBlank()) {
+                        sendMessageToFirebase(
+                            myEmail = myEmail,
+                            friendEmail = user.email,
+                            text = text,
+                            onSuccess = {
+                                message = ""
+                                refreshMessages()
+                            }
+                        )
+                    }
+                }
+            ) {
+                Text("전송")
+            }
+        }
+    }
+}
+
 private fun formatMatchDateTime(dateTime: LocalDateTime): String = dateTime.format(dateTimeFormatter)
 
 private fun formatDateOnly(date: LocalDate): String = date.format(dateOnlyFormatter)
@@ -2008,5 +2501,6 @@ private enum class FMateTab(
     Matches("매치", Icons.Outlined.Explore, Icons.Filled.Explore),
     Schedule("일정", Icons.Outlined.CalendarMonth, Icons.Filled.CalendarMonth),
     Create("생성", Icons.Outlined.AddCircleOutline, Icons.Filled.AddCircle),
+    Users("유저", Icons.Outlined.PersonOutline, Icons.Filled.Groups),
     Profile("프로필", Icons.Outlined.PersonOutline, Icons.Filled.Person),
 }
