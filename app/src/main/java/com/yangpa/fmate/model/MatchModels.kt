@@ -32,6 +32,7 @@ data class PlayerProfile(
     val position: String,
     val skill: String,
     val timePreference: String,
+    val statusMessage: String = "",
 )
 
 enum class MatchFilter(val label: String) {

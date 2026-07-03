@@ -60,6 +60,7 @@ class LocalDemoStore(context: Context) {
         position = optString("position", "윙어"),
         skill = optString("skill", "중급"),
         timePreference = optString("timePreference", "야간"),
+        statusMessage = optString("statusMessage", ""),
     )
 
     private fun JSONObject.toMatch(): MatchCardData {
@@ -114,6 +115,7 @@ class LocalDemoStore(context: Context) {
         .put("position", position)
         .put("skill", skill)
         .put("timePreference", timePreference)
+        .put("statusMessage", statusMessage)
 
     private fun List<MatchCardData>.toMatchJsonArray(): JSONArray = JSONArray().also { array ->
         forEach { match -> array.put(match.toJson()) }

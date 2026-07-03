@@ -127,8 +127,6 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import com.yangpa.fmate.data.updateUserProfileToFirebase
-import com.yangpa.fmate.data.saveUserToFirebase
-import com.yangpa.fmate.data.updateUserProfileToFirebase
 import com.yangpa.fmate.data.addFriendToFirebase
 import com.yangpa.fmate.data.loadFriendsFromFirebase
 
@@ -301,6 +299,7 @@ fun FMateApp() {
 
                 else -> MainShell(
                     displayName = displayName,
+                    userEmail = userEmail,
                     matches = matches,
                     joinedMatchIds = joinedMatchIds,
                     bookmarkedMatchIds = bookmarkedMatchIds,
@@ -593,6 +592,7 @@ private fun LoginScreen(
 @Composable
 private fun MainShell(
     displayName: String,
+    userEmail: String,
     matches: List<MatchCardData>,
     joinedMatchIds: List<String>,
     bookmarkedMatchIds: List<String>,
@@ -649,7 +649,7 @@ private fun MainShell(
 
             if (chatUser != null) {
                 ChatScreen(
-                    myEmail = displayName,
+                    myEmail = userEmail,
                     user = chatUser!!,
                     onBack = {
                         chatUser = null
@@ -697,7 +697,7 @@ private fun MainShell(
                                 },
                                 onRefreshFriends = {
                                     loadFriendsFromFirebase(
-                                        myEmail = displayName,
+                                        myEmail = userEmail,
                                         onSuccess = { loadedFriends ->
                                             friends = loadedFriends
                                         }
@@ -705,7 +705,7 @@ private fun MainShell(
                                 },
                                 onAddFriend = { user ->
                                     addFriendToFirebase(
-                                        myEmail = displayName,
+                                        myEmail = userEmail,
                                         friend = user,
                                         onSuccess = {
                                             friends = friends + user
