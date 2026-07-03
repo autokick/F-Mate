@@ -2,7 +2,7 @@ package com.yangpa.fmate.ui
 
 import com.yangpa.fmate.data.ChatMessageData
 import com.yangpa.fmate.data.sendMessageToFirebase
-import com.yangpa.fmate.data.loadMessagesFromFirebase
+import com.yangpa.fmate.data.listenMessagesFromFirebase
 import com.yangpa.fmate.data.saveUserToFirebase
 import com.yangpa.fmate.data.UserProfile
 import com.yangpa.fmate.data.loadUsersFromFirebase
@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -63,6 +64,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -83,6 +85,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -612,6 +616,8 @@ private fun MainShell(
     var friends by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var selectedUser by remember { mutableStateOf<UserProfile?>(null) }
     var chatUser by remember { mutableStateOf<UserProfile?>(null) }
+    var usersLoading by remember { mutableStateOf(false) }
+    var friendsLoading by remember { mutableStateOf(false) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -651,6 +657,7 @@ private fun MainShell(
                 ChatScreen(
                     myEmail = userEmail,
                     user = chatUser!!,
+                    showMessage = showMessage,
                     onBack = {
                         chatUser = null
                     }
@@ -686,20 +693,35 @@ private fun MainShell(
                     FMateTab.Users -> {
                         if (selectedUser == null) {
                             FriendsScreen(
+                                myEmail = userEmail,
                                 users = users,
                                 friends = friends,
+                                usersLoading = usersLoading,
+                                friendsLoading = friendsLoading,
                                 onRefreshUsers = {
+                                    usersLoading = true
                                     loadUsersFromFirebase(
                                         onSuccess = { loadedUsers ->
                                             users = loadedUsers
+                                            usersLoading = false
+                                        },
+                                        onFailure = {
+                                            usersLoading = false
+                                            showMessage("유저 목록을 불러오지 못했습니다.")
                                         }
                                     )
                                 },
                                 onRefreshFriends = {
+                                    friendsLoading = true
                                     loadFriendsFromFirebase(
                                         myEmail = userEmail,
                                         onSuccess = { loadedFriends ->
                                             friends = loadedFriends
+                                            friendsLoading = false
+                                        },
+                                        onFailure = {
+                                            friendsLoading = false
+                                            showMessage("친구 목록을 불러오지 못했습니다.")
                                         }
                                     )
                                 },
@@ -710,6 +732,9 @@ private fun MainShell(
                                         onSuccess = {
                                             friends = friends + user
                                             showMessage("친구로 추가했습니다.")
+                                        },
+                                        onFailure = {
+                                            showMessage("친구 추가에 실패했습니다.")
                                         }
                                     )
                                 },
@@ -1357,8 +1382,11 @@ private fun CreateMatchScreen(
 
 @Composable
 private fun FriendsScreen(
+    myEmail: String,
     users: List<UserProfile>,
     friends: List<UserProfile>,
+    usersLoading: Boolean,
+    friendsLoading: Boolean,
     onRefreshUsers: () -> Unit,
     onRefreshFriends: () -> Unit,
     onAddFriend: (UserProfile) -> Unit,
@@ -1367,9 +1395,10 @@ private fun FriendsScreen(
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredUsers = users.filter { user ->
-        searchQuery.isBlank() ||
-            user.nickname.contains(searchQuery, ignoreCase = true) ||
-            user.email.contains(searchQuery, ignoreCase = true)
+        user.email != myEmail &&
+            (searchQuery.isBlank() ||
+                user.nickname.contains(searchQuery, ignoreCase = true) ||
+                user.email.contains(searchQuery, ignoreCase = true))
     }
 
     val friendEmails = friends.map { it.email }.toSet()
@@ -1401,18 +1430,20 @@ private fun FriendsScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = onRefreshUsers,
+                    enabled = !usersLoading,
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(vertical = 14.dp),
                 ) {
-                    Text("유저 검색")
+                    Text(if (usersLoading) "불러오는 중..." else "유저 검색")
                 }
 
                 OutlinedButton(
                     onClick = onRefreshFriends,
+                    enabled = !friendsLoading,
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(vertical = 14.dp),
                 ) {
-                    Text("내 친구")
+                    Text(if (friendsLoading) "불러오는 중..." else "내 친구")
                 }
             }
         }
@@ -2359,19 +2390,35 @@ data class ChatMessage(
 private fun ChatScreen(
     myEmail: String,
     user: UserProfile,
+    showMessage: (String) -> Unit,
     onBack: () -> Unit
 ) {
     var message by remember { mutableStateOf("") }
     var messages by remember { mutableStateOf<List<ChatMessageData>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    val listState = rememberLazyListState()
 
-    fun refreshMessages() {
-        loadMessagesFromFirebase(
+    DisposableEffect(myEmail, user.email) {
+        loading = true
+        val registration = listenMessagesFromFirebase(
             myEmail = myEmail,
             friendEmail = user.email,
-            onSuccess = { loadedMessages ->
+            onChange = { loadedMessages ->
                 messages = loadedMessages
-            }
+                loading = false
+            },
+            onFailure = {
+                loading = false
+                showMessage("메시지를 불러오지 못했습니다.")
+            },
         )
+        onDispose { registration.remove() }
+    }
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
     }
 
     Column(
@@ -2396,37 +2443,43 @@ private fun ChatScreen(
             )
         }
 
-        Button(
-            onClick = { refreshMessages() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-        ) {
-            Text("대화 불러오기")
-        }
+        Box(modifier = Modifier.weight(1f)) {
+            when {
+                loading -> CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center)
+                )
 
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(messages) { msg ->
-                val isMine = msg.senderEmail == myEmail
+                messages.isEmpty() -> Text(
+                    text = "아직 대화가 없습니다. 첫 메시지를 보내보세요.",
+                    color = MutedInk,
+                    modifier = Modifier.align(Alignment.Center)
+                )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
+                else -> LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isMine) Color(0xFFD7F2DD) else Color.White
-                        )
-                    ) {
-                        Text(
-                            text = msg.text,
-                            modifier = Modifier.padding(12.dp),
-                            color = Ink
-                        )
+                    items(messages) { msg ->
+                        val isMine = msg.senderEmail == myEmail
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start
+                        ) {
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isMine) Color(0xFFD7F2DD) else Color.White
+                                )
+                            ) {
+                                Text(
+                                    text = msg.text,
+                                    modifier = Modifier.padding(12.dp),
+                                    color = Ink
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -2456,7 +2509,9 @@ private fun ChatScreen(
                             text = text,
                             onSuccess = {
                                 message = ""
-                                refreshMessages()
+                            },
+                            onFailure = {
+                                showMessage("메시지 전송에 실패했습니다.")
                             }
                         )
                     }

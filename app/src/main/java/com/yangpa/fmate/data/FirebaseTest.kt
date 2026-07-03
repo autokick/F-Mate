@@ -3,6 +3,7 @@ package com.yangpa.fmate.data
 import android.util.Log
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.yangpa.fmate.model.PlayerProfile
 
 fun saveUserToFirebase(
@@ -177,6 +178,31 @@ fun loadMessagesFromFirebase(
             onSuccess(messages)
         }
         .addOnFailureListener { e -> onFailure(e) }
+}
+
+fun listenMessagesFromFirebase(
+    myEmail: String,
+    friendEmail: String,
+    onChange: (List<ChatMessageData>) -> Unit,
+    onFailure: (Exception) -> Unit = {}
+): ListenerRegistration {
+    val db = FirebaseFirestore.getInstance()
+    val roomId = makeChatRoomId(myEmail, friendEmail)
+
+    return db.collection("chatRooms")
+        .document(roomId)
+        .collection("messages")
+        .orderBy("createdAtMillis")
+        .addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                onFailure(error)
+                return@addSnapshotListener
+            }
+            val messages = snapshot?.documents?.mapNotNull { doc ->
+                doc.toObject(ChatMessageData::class.java)
+            } ?: emptyList()
+            onChange(messages)
+        }
 }
 
 fun loadUsersFromFirebase(
