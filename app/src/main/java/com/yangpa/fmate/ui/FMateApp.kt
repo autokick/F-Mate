@@ -531,7 +531,6 @@ internal fun AppHeader(displayName: String, onProfileClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding()
             .padding(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -789,8 +788,8 @@ internal fun <T> OptionSection(
 }
 
 @Composable
-internal fun PitchLines(alpha: Float) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
+internal fun PitchLines(alpha: Float, modifier: Modifier = Modifier.fillMaxSize()) {
+    Canvas(modifier = modifier) {
         val paint = Stroke(width = 1.6.dp.toPx())
         val color = Color.White.copy(alpha = alpha)
         drawRoundRect(

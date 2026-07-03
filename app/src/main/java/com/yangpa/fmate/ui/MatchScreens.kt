@@ -313,7 +313,7 @@ internal fun FeaturedMatchCard(
                 .background(pitchGradient)
                 .padding(22.dp),
         ) {
-            PitchLines(alpha = 0.16f)
+            PitchLines(alpha = 0.16f, modifier = Modifier.matchParentSize())
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TagChip("MATCHDAY PICK", bright = true)
