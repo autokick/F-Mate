@@ -12,6 +12,7 @@ data class DemoSnapshot(
     val joinedMatchIds: List<String>,
     val bookmarkedMatchIds: List<String>,
     val displayName: String,
+    val userEmail: String,
     val profile: PlayerProfile,
     val enteredApp: Boolean,
 )
@@ -28,6 +29,7 @@ class LocalDemoStore(context: Context) {
                 joinedMatchIds = json.getJSONArray("joinedMatchIds").toStringList(),
                 bookmarkedMatchIds = json.optJSONArray("bookmarkedMatchIds")?.toStringList().orEmpty(),
                 displayName = json.optString("displayName", "홍길동"),
+                userEmail = json.optString("userEmail", "20220000@seoil.ac.kr"),
                 profile = json.getJSONObject("profile").toProfile(),
                 enteredApp = json.optBoolean("enteredApp", false),
             )
@@ -40,6 +42,7 @@ class LocalDemoStore(context: Context) {
             .put("joinedMatchIds", snapshot.joinedMatchIds.toStringJsonArray())
             .put("bookmarkedMatchIds", snapshot.bookmarkedMatchIds.toStringJsonArray())
             .put("displayName", snapshot.displayName)
+            .put("userEmail", snapshot.userEmail)
             .put("profile", snapshot.profile.toJson())
             .put("enteredApp", snapshot.enteredApp)
 

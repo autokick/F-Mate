@@ -182,7 +182,7 @@ fun FMateApp() {
 
             var enteredApp by remember { mutableStateOf(initialSnapshot?.enteredApp ?: false) }
             var displayName by remember { mutableStateOf(initialSnapshot?.displayName ?: "홍길동") }
-            var userEmail by remember { mutableStateOf("20220000@seoil.ac.kr") }
+            var userEmail by remember { mutableStateOf(initialSnapshot?.userEmail ?: "20220000@seoil.ac.kr") }
             var profile by remember {
                 mutableStateOf(
                     initialSnapshot?.profile ?: PlayerProfile(
@@ -205,6 +205,7 @@ fun FMateApp() {
                 nextJoinedMatchIds: List<String> = joinedMatchIds.toList(),
                 nextBookmarkedMatchIds: List<String> = bookmarkedMatchIds.toList(),
                 nextDisplayName: String = displayName,
+                nextUserEmail: String = userEmail,
                 nextProfile: PlayerProfile = profile,
                 nextEnteredApp: Boolean = enteredApp,
             ) {
@@ -214,6 +215,7 @@ fun FMateApp() {
                         joinedMatchIds = nextJoinedMatchIds,
                         bookmarkedMatchIds = nextBookmarkedMatchIds,
                         displayName = nextDisplayName,
+                        userEmail = nextUserEmail,
                         profile = nextProfile,
                         enteredApp = nextEnteredApp,
                     ),
@@ -285,6 +287,7 @@ fun FMateApp() {
 
                         persistState(
                             nextDisplayName = nextDisplayName,
+                            nextUserEmail = nextEmail,
                             nextEnteredApp = true
                         )
                     },
@@ -337,6 +340,7 @@ fun FMateApp() {
                         bookmarkedMatchIds.addAll(listOf("m1", "m5"))
                         profile = PlayerProfile(position = "윙어", skill = "중급", timePreference = "야간")
                         displayName = "홍길동"
+                        userEmail = "20220000@seoil.ac.kr"
                         enteredApp = false
                         showMessage("시연 데이터를 초기화했습니다.")
                     },
