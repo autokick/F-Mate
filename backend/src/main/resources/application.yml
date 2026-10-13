@@ -1,0 +1,117 @@
+# F-Mate 서버 설정
+# 모든 비밀값·외부 키는 환경변수로만 주입한다. 비어 있으면 해당 기능은 "미설정"으로 동작한다.
+# 기본 프로필 = 로컬 개발. 운영은 SPRING_PROFILES_ACTIVE=prod (application-prod.yml 참고)
+
+spring:
+  application:
+    name: fmate
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/fmate}
+    username: ${DB_USERNAME:fmate}
+    password: ${DB_PASSWORD:fmate}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: Asia/Seoul
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${MAIL_STARTTLS:true}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    # 메일 서버 미설정 상태에서 헬스체크가 DOWN 이 되어 배포가 막히지 않도록 기본 off
+    mail:
+      enabled: ${MAIL_HEALTH_ENABLED:false}
+
+logging:
+  pattern:
+    level: "%5p [%X{requestId:-}]"
+
+fmate:
+  # 개발 모드: 메일 서버가 없을 때 인증 코드를 서버 로그에 출력한다. 운영에서는 반드시 false.
+  dev-mode: ${FMATE_DEV_MODE:true}
+  # 요청 제한(로그인·가입·업로드 등). 테스트에서만 끈다.
+  rate-limit-enabled: true
+  # 앱·결제창이 접근하는 이 서버의 외부 주소 (결제 성공/실패 리다이렉트에 사용)
+  # 안드로이드 에뮬레이터에서 PC 의 서버는 http://10.0.2.2:8080
+  public-base-url: ${PUBLIC_BASE_URL:http://10.0.2.2:8080}
+  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  jwt:
+    # Base64 로 인코딩한 32바이트 이상 무작위 값. 비어 있으면 개발 모드에서만 임시 키를 생성한다.
+    secret: ${JWT_SECRET:}
+    issuer: fmate
+    access-ttl: PT15M
+    refresh-ttl: P30D
+  mail:
+    from: ${MAIL_FROM:}
+  payment:
+    # TEST 또는 LIVE. 키가 비어 있으면 결제 기능 비활성("결제 준비 중")
+    mode: ${PAYMENT_MODE:TEST}
+    toss-client-key: ${TOSS_CLIENT_KEY:}
+    toss-secret-key: ${TOSS_SECRET_KEY:}
+    toss-base-url: https://api.tosspayments.com
+    hold-minutes: 10
+  storage:
+    # 비어 있으면 사진·영상 업로드 비활성
+    endpoint: ${STORAGE_ENDPOINT:}
+    # 앱이 업로드할 때 쓰는 주소가 서버용 주소와 다를 때만 (로컬 Docker + 에뮬레이터)
+    presign-endpoint: ${STORAGE_PRESIGN_ENDPOINT:}
+    region: ${STORAGE_REGION:ap-northeast-2}
+    access-key: ${STORAGE_ACCESS_KEY:}
+    secret-key: ${STORAGE_SECRET_KEY:}
+    bucket-raw: ${STORAGE_BUCKET_RAW:}
+    bucket-public: ${STORAGE_BUCKET_PUBLIC:}
+    public-base-url: ${CDN_BASE_URL:}
+    path-style: ${STORAGE_PATH_STYLE:false}
+  push:
+    # Firebase 서비스 계정 JSON 파일 경로. 비어 있으면 푸시 미발송(앱 내 알림 목록은 동작)
+    fcm-credentials-path: ${FCM_CREDENTIALS_PATH:}
+  social:
+    # 카카오 앱 ID (토큰이 우리 앱에서 발급됐는지 확인). 비어 있으면 카카오 로그인 비활성
+    kakao-app-id: ${KAKAO_APP_ID:}
+    # 쉼표로 구분한 OAuth 클라이언트 ID 목록
+    google-client-ids: ${GOOGLE_CLIENT_IDS:}
+    apple-audiences: ${APPLE_AUDIENCES:}
+  maps:
+    # 앱이 지도를 표시할 수 있는지 알려주기 위한 값 (키 자체는 앱 빌드에 넣는다)
+    enabled: ${MAPS_ENABLED:false}
+  places:
+    # 카카오 로컬 API REST 키 (developers.kakao.com → 내 애플리케이션 → 앱 키 → REST API 키).
+    # 비어 있으면 "내 주변 실제 풋살장" 기능이 꺼진다. 검색 결과는 저장하지 않는다(카카오 정책).
+    kakao-rest-api-key: ${KAKAO_REST_API_KEY:}
+  encoder:
+    # 서버에 ffmpeg/ffprobe 가 설치되어 있고 스토리지가 설정됐을 때 true
+    enabled: ${ENCODER_ENABLED:false}
+    ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
+    ffprobe-path: ${FFPROBE_PATH:ffprobe}

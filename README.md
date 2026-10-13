@@ -1,83 +1,70 @@
-# F-MATE
+# F-Mate
 
-F-MATE는 풋살 매치를 더 쉽게 찾고, 참가 신청부터 일정 관리까지 한 흐름으로 처리하기 위한 Android 전용 캡스톤디자인 프로젝트입니다.
+풋살장 실시간 예약 + 풋살 커뮤니티 SNS 모바일 앱.
+Flutter(Android 우선) · Spring Boot 3.5 (Java 21) · PostgreSQL 16 · 토스페이먼츠 · S3 호환 스토리지 · FCM.
 
-기존 Flutter 프로젝트는 UI/UX 흐름 검증용 프로토타입으로만 유지하고, 실제 MVP 제품 코드는 Kotlin과 Jetpack Compose 기반으로 새로 구성합니다.
+> **상태**: 서버·앱·DB 전체 코드 작성 완료. DB 계층은 실제 PostgreSQL에서 테스트 134개 통과.
+> 서버·앱은 이 저장소를 만든 환경에서 **컴파일하지 못했으므로 첫 빌드는 사용자 PC에서** 하게 된다.
+> 기능별 정직한 상태: [docs/04-status.md](docs/04-status.md)
 
-## 프로젝트 목표
+## 빠른 시작
 
-- SNS, 주변 지인, 커뮤니티에 흩어진 풋살 인원 모집 흐름을 앱 안으로 모읍니다.
-- 매치 탐색, 참가 신청, 일정 반영을 한 번의 사용자 흐름으로 연결합니다.
-- 사용자 프로필의 포지션, 실력, 선호 시간대를 기반으로 적합한 매치를 먼저 추천합니다.
-- 모바일 환경에서 바로 시연 가능한 MVP를 빠르게 완성합니다.
+```bash
+# 1) 서버 (Docker Desktop 필요)
+cp .env.example .env              # 외부 키는 비워 둬도 실행된다
+docker compose up -d --build      # DB + API + 메일 확인함(Mailpit) + 로컬 저장소(SeaweedFS)
+curl http://localhost:8080/actuator/health
 
-## MVP 기능
-
-- 온보딩 및 발표용 로그인
-- 추천 점수 기반 매치 목록
-- 매치 검색, 레벨/시간대/구장 타입 필터
-- 관심 매치 저장
-- 매치 상세 정보
-- 매치 생성
-- 참가 신청 및 참가 취소
-- 내 일정
-- 체크인 코드 및 참가비 표시
-- 프로필 설정: 선호 포지션, 실력, 시간대, 상태 메시지
-- 프로필 기반 매치 추천
-- 유저 검색과 친구 추가
-- 친구와의 1:1 채팅
-- 앱 재실행 후에도 유지되는 로컬 시연 데이터
-
-## 데이터 저장 구조
-
-매치, 참가 신청, 관심 매치, 프로필 변경 같은 시연 데이터는 발표 안정성을 위해 Android 내부 저장소에 보관하며 앱을 다시 실행해도 유지됩니다.
-
-유저 검색, 친구, 1:1 채팅은 Firebase Firestore에 저장해 기기 사이에서 데이터를 주고받습니다.
-
-상용화 단계에서는 같은 화면 흐름과 Repository 구조를 유지하면서 로컬 저장소도 서버로 옮길 수 있습니다.
-
-```text
-현재 버전
-Android 앱 -> LocalDemoStore     -> 기기 내부 저장소 (매치 / 일정 / 관심 매치 / 프로필)
-Android 앱 -> Firebase Firestore -> 유저 / 친구 / 채팅
-
-상용화 확장 구조
-Android 앱 -> API 서버 / Firebase -> 사용자 DB / 매치 DB / 참가 신청 DB
+# 2) 앱 (Android Studio)
+#    app/README.md 의 "적용 방법" → app/ANDROID_SETUP.md 1~3번
+cd <내 Flutter 프로젝트>
+flutter pub get && flutter test && flutter run
 ```
 
-## 기술 스택
+- 가입 인증 코드: http://localhost:8025 (Mailpit)
+- 첫 관리자 계정·구장 등록 방법: [docs/05-deploy.md §1](docs/05-deploy.md)
+- **전시·발표용 시연 데이터**(공공데이터 실제 풋살장 가져오기, 운영자·관리자 계정): [backend/demo/README.md](backend/demo/README.md)
+- 결제는 토스페이먼츠 테스트 키를 `.env`에 넣어야 켜진다. 그 전에는 앱이 "결제 준비 중"을 표시한다.
 
-- Kotlin
-- Jetpack Compose
-- Material 3
-- Firebase Firestore
-- Android Gradle Plugin
-- Gradle Wrapper
+## 구성
 
-## 화면 흐름
-
-1. 온보딩에서 서비스 목적을 확인합니다.
-2. 학교 이메일과 닉네임으로 발표용 입장을 진행합니다.
-3. 매치 탭에서 추천 매치와 필터링된 매치 목록을 확인합니다.
-4. 매치 상세에서 일정, 장소, 모집 현황, 호스트 정보를 확인하고 참가 신청 또는 취소를 합니다.
-5. 참가한 매치는 일정 탭에 자동으로 표시됩니다.
-6. 생성 탭에서 새 매치를 만들면 내 일정에 바로 추가됩니다.
-7. 프로필 탭에서 포지션, 실력, 선호 시간대를 바꾸면 추천 점수가 즉시 갱신됩니다.
-8. 유저 탭에서 다른 유저를 검색해 친구로 추가하고, 친구와 1:1 채팅을 나눕니다.
-9. 프로필 탭에서 시연 데이터를 초기화할 수 있습니다.
-
-## 실행 방법
-
-Windows PowerShell 기준:
-
-```powershell
-.\gradlew.bat :app:assembleDebug
+```
+fmate/
+  docker-compose.yml, .env.example   로컬 실행 환경, 환경변수 목록
+  docs/
+    01-architecture.md        아키텍처, 데이터 소유권, 인증, 예약·결제 일관성, 영상·채팅 설계
+    02-api-spec.md            API 명세 (코드에서 추출한 119개 엔드포인트, WebSocket, 오류 코드)
+    03-external-services.md   결제·지도·스토리지·FCM·구장 데이터·법적 절차, 환경변수
+    04-status.md              기능별 완료/부분/미구현/외부 승인 필요 + 테스트 결과
+    05-deploy.md              로컬 실행, 외부 서비스 연결 순서, 운영 배포, 출시 체크리스트
+  backend/                    Spring Boot 서버
+    src/main/java/app/fmate/  auth, user, venue, reservation, payment, social, video, chat, notification, admin, jobs
+    src/main/resources/db/migration/   Flyway V1~V6 (테이블·제약·트리거·함수)
+    src/test/                 통합 테스트 (Testcontainers)
+    db-tests/                 psql 기반 DB 규칙·동시성 테스트, SQL 문장 검사
+  app/                        Flutter 앱 (lib/, test/, pubspec.yaml)
+    README.md                 적용 방법·구조·체크리스트
+    ANDROID_SETUP.md          권한·http 허용·지도·푸시·릴리스 서명
 ```
 
-Android Studio에서는 이 저장소를 열고 `app` 모듈을 실행하면 됩니다.
+## 테스트
 
-## 패키지
+```bash
+# DB 규칙·동시성 (PostgreSQL 16 + btree_gist·citext·pg_trgm). 운영 DB 서버에서 실행 금지 (fmate_t_* DB를 만들고 지움)
+cd backend/db-tests && PGHOST=localhost PGPORT=5432 PGUSER=postgres PGPASSWORD=... ./run.sh
 
-```text
-com.yangpa.fmate
+# 서버 통합 테스트 (Docker 필요)
+cd backend && ./gradlew test
+
+# 앱
+flutter test
 ```
+
+Windows에서 `run.sh`는 Git Bash 또는 WSL에서 실행한다. `docker compose`의 DB를 쓰려면 사용자 `fmate`/비밀번호 `fmate`로 접속하되,
+러너가 DB를 만들고 지우므로 별도의 테스트용 PostgreSQL 컨테이너를 권장한다.
+
+## 원칙
+
+- 가짜 데이터·가짜 결제 성공 없음. 외부 서비스가 연결되지 않은 기능은 "준비 중"으로 표시
+- 비밀값은 환경변수로만. 저장소에 키 없음
+- 예약 중복·결제 금액·환불 한도는 앱이 아니라 **DB 제약과 서버**가 보장

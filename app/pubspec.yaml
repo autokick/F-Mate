@@ -1,0 +1,42 @@
+name: fmate_app
+description: "F-Mate — 풋살장 실시간 예약과 풋살 커뮤니티"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # 서버 통신
+  dio: ^5.7.0
+  web_socket_channel: ^3.0.1
+  # 토큰 보안 저장 (Android Keystore / iOS Keychain)
+  flutter_secure_storage: ^9.2.2
+
+  # 사진·영상
+  image_picker: ^1.1.2
+  video_player: ^2.9.2
+
+  # 결제창(토스) 표시
+  webview_flutter: ^4.10.0
+  url_launcher: ^6.3.1
+
+  # 지도·위치
+  google_maps_flutter: ^2.10.0
+  geolocator: ^13.0.2
+
+  # 푸시 알림 (FCM 전송 채널로만 사용)
+  firebase_core: ^3.8.0
+  firebase_messaging: ^15.1.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

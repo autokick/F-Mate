@@ -1,0 +1,103 @@
+# 로컬 개발용: PostgreSQL + API 서버 + 메일 확인용 Mailpit + 사진·영상 저장용 SeaweedFS(S3 호환)
+#   docker compose up -d --build
+#   API        : http://localhost:8080  (안드로이드 에뮬레이터에서는 http://10.0.2.2:8080)
+#   메일 확인함 : http://localhost:8025  (가입 인증 코드 메일이 여기로 온다)
+# 외부 서비스 키는 .env 파일에 넣는다 (.env.example 참고). 비어 있으면 해당 기능은 "준비 중"으로 동작.
+# .env 에 실제 S3 값을 넣으면 로컬 저장소 대신 그 값을 쓴다 (AWS S3 는 STORAGE_ENDPOINT 도 함께 지정).
+# 실제 휴대폰으로 테스트할 때는 .env 에 STORAGE_PRESIGN_ENDPOINT / CDN_BASE_URL 의 10.0.2.2 를 PC 의 IP 로 바꾼다.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: fmate
+      POSTGRES_USER: fmate
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fmate}
+      TZ: Asia/Seoul
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fmate -d fmate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+
+  # 사진·영상 저장소: SeaweedFS (S3 호환). MinIO 는 2026-09 Docker Hub 에서 이미지가 삭제되어 교체.
+  #   S3 API: http://localhost:9000  (계정 fmate-local / fmate-local-secret — 이 PC 안에서만 쓰는 개발용 값)
+  #   fmate-public 버킷은 누구나 읽기 가능(사진·영상 재생용), fmate-raw 는 비공개(원본·구장 서류)
+  storage:
+    image: chrislusf/seaweedfs:4.47
+    command: server -s3 -s3.port=9000 -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=100
+    ports:
+      - "9000:9000"
+    volumes:
+      - storagedata:/data
+      - ./docker/seaweedfs-s3.json:/etc/seaweedfs/s3.json:ro
+
+  # 버킷 2개 생성. 저장소가 뜰 때까지 기다렸다가 한 번 실행되고 끝난다.
+  storage-init:
+    image: amazon/aws-cli:2.27.0
+    depends_on:
+      - storage
+    volumes:
+      - ./docker/public-read-policy.json:/policy/public-read.json:ro
+    environment:
+      AWS_ACCESS_KEY_ID: fmate-local
+      AWS_SECRET_ACCESS_KEY: fmate-local-secret
+      AWS_DEFAULT_REGION: ap-northeast-2
+    entrypoint: >
+      /bin/sh -c "
+      for i in $$(seq 1 60); do aws --endpoint-url http://storage:9000 s3api list-buckets >/dev/null 2>&1 && break; sleep 2; done;
+      aws --endpoint-url http://storage:9000 s3api create-bucket --bucket fmate-raw >/dev/null 2>&1;
+      aws --endpoint-url http://storage:9000 s3api create-bucket --bucket fmate-public >/dev/null 2>&1;
+      aws --endpoint-url http://storage:9000 s3api put-bucket-policy --bucket fmate-public --policy file:///policy/public-read.json;
+      aws --endpoint-url http://storage:9000 s3api list-buckets --query 'Buckets[].Name' --output text
+      "
+
+  api:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/fmate
+      DB_USERNAME: fmate
+      DB_PASSWORD: ${DB_PASSWORD:-fmate}
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      MAIL_FROM: no-reply@fmate.local
+      MAIL_SMTP_AUTH: "false"
+      MAIL_STARTTLS: "false"
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://10.0.2.2:8080}
+      # 스토리지: .env 가 비어 있으면 로컬 SeaweedFS
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://storage:9000}
+      STORAGE_PRESIGN_ENDPOINT: ${STORAGE_PRESIGN_ENDPOINT:-http://10.0.2.2:9000}
+      STORAGE_REGION: ${STORAGE_REGION:-ap-northeast-2}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-fmate-local}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-fmate-local-secret}
+      STORAGE_BUCKET_RAW: ${STORAGE_BUCKET_RAW:-fmate-raw}
+      STORAGE_BUCKET_PUBLIC: ${STORAGE_BUCKET_PUBLIC:-fmate-public}
+      CDN_BASE_URL: ${CDN_BASE_URL:-http://10.0.2.2:9000/fmate-public}
+      STORAGE_PATH_STYLE: ${STORAGE_PATH_STYLE:-true}
+      # AWS SDK 2.30+ 의 기본 체크섬 헤더를 S3 호환 저장소가 거부하는 경우가 있어 필요할 때만 보내게 한다
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      # Docker 이미지에 ffmpeg 포함 → 숏폼 인코딩 기본 켜짐
+      ENCODER_ENABLED: ${ENCODER_ENABLED:-true}
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:
+  storagedata:

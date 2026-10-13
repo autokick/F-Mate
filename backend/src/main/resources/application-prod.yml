@@ -1,0 +1,9 @@
+# 운영 프로필: SPRING_PROFILES_ACTIVE=prod
+# JWT_SECRET 이 없거나, PUBLIC_BASE_URL 이 https 가 아니거나, 결제 모드와 키 종류가 맞지 않으면 서버가 시작되지 않는다 (JwtConfig, StartupReport).
+fmate:
+  dev-mode: false
+
+logging:
+  level:
+    root: INFO
+    app.fmate: INFO

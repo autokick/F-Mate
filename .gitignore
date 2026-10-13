@@ -1,18 +1,22 @@
-# Gradle
-.gradle/
-build/
-**/build/
-
-# Android Studio
+node_modules/
+*.log
+.env
+# 빌드 결과물
+backend/build/
+backend/.gradle/
+app/build/
+app/.dart_tool/
 .idea/
-*.iml
-
-# Local machine state
+# 서명 키·로컬 설정 (커밋 금지)
+*.jks
+*.keystore
+key.properties
 local.properties
+google-services.json
 
-# Kotlin
-*.kotlin_module
+# 공공데이터로 만든 구장 SQL (다시 만들 수 있음)
+backend/demo/public_futsal.sql
 
-# Generated APKs
-*.apk
-*.aab
+# Python temporary bytecode
+__pycache__/
+*.py[cod]
