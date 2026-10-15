@@ -43,3 +43,5 @@ The GitHub Actions **android-apk** job assembles an Android ARM64 APK artifact. 
 - Payment test client key is embedded (by design, public); **secret approval key is never on-device**.
 - Android device Internet connection is necessary. The local rules-based demo bot works without network.
 - Flutter build & widget tests are automated. Physical device/TossPay app return flows require on-device QA; a CI-passing APK alone cannot establish payment usability across every Android handset.
+
+Android AGP 9 currently rejects the published `flutter_inappwebview_android 1.1.3` plugin's obsolete ProGuard default; `scripts/patch_toss_inappwebview.py` applies upstream's corrected default **only in the disposable CI pub cache**. This can be removed after a stable upstream fix.

@@ -78,6 +78,8 @@ jobs:
       - name: Resolve Flutter dependencies
         working-directory: app
         run: flutter pub get
+      - name: Fix Toss WebView native plugin for AGP 9
+        run: python3 scripts/patch_toss_inappwebview.py
       - name: Build ARM64 Android APK
         working-directory: app
         run: flutter build apk --release --target-platform android-arm64 --dart-define=BACKEND=firebase --dart-define=EXHIBITION_KIOSK=true
