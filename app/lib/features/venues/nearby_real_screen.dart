@@ -16,7 +16,10 @@ import 'venue_detail_screen.dart';
 /// F-Mate 와 예약 제휴된 구장이 아니므로 정보만 보여주고,
 /// "예약 체험"은 시연용 구장의 시간표로 예약 과정을 보여준다 (화면에 명시).
 class NearbyRealScreen extends StatefulWidget {
-  const NearbyRealScreen({super.key});
+  const NearbyRealScreen({super.key, this.autoLocate = true});
+
+  /// Test-only control for platform GPS startup; production continues locating.
+  final bool autoLocate;
 
   @override
   State<NearbyRealScreen> createState() => _NearbyRealScreenState();
@@ -40,7 +43,9 @@ class _NearbyRealScreenState extends State<NearbyRealScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _useMyLocation());
+    if (widget.autoLocate) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _useMyLocation());
+    }
   }
 
   @override
@@ -283,11 +288,13 @@ class _PlaceCard extends StatelessWidget {
             Text(sub, style: const TextStyle(fontSize: 13, color: FmColors.textSecondary)),
           ],
           const SizedBox(height: FmSpace.s),
-          Row(
+          Wrap(
+            spacing: FmSpace.s,
+            runSpacing: FmSpace.s,
             children: [
               if (onCall != null)
                 Padding(
-                  padding: const EdgeInsets.only(right: FmSpace.s),
+                  padding: EdgeInsets.zero,
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
                     onPressed: onCall,
@@ -297,7 +304,7 @@ class _PlaceCard extends StatelessWidget {
                 ),
               if (onMap != null)
                 Padding(
-                  padding: const EdgeInsets.only(right: FmSpace.s),
+                  padding: EdgeInsets.zero,
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
                     onPressed: onMap,
@@ -305,7 +312,6 @@ class _PlaceCard extends StatelessWidget {
                     label: const Text('카카오맵'),
                   ),
                 ),
-              const Spacer(),
               FilledButton(
                 style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
                 onPressed: onTryBooking,

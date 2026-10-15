@@ -1,0 +1,48 @@
+name: F-Mate Flutter exhibition verification
+
+on:
+  push:
+    branches:
+      - feature/firebase-spark-exhibition-20261015
+  pull_request:
+    branches:
+      - capstone/demo-20261013
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve Flutter dependencies
+        working-directory: app
+        run: flutter pub get
+      - name: Analyze Dart
+        working-directory: app
+        run: flutter analyze
+      - name: Run existing widget tests
+        working-directory: app
+        run: flutter test
+
+  firestore-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: firebase-tests/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Firebase emulator test tools
+        working-directory: firebase-tests
+        run: npm ci --no-audit --no-fund
+      - name: Verify Firestore security rules
+        working-directory: firebase-tests
+        run: npm test

@@ -12,6 +12,7 @@ import 'config.dart';
 import 'models.dart';
 import 'repos.dart';
 import 'session.dart';
+import 'firebase_session.dart';
 
 /// 앱 전역 서비스. AppScope.of(context) 로 꺼내 쓴다.
 class AppServices {
@@ -29,7 +30,8 @@ class AppServices {
   /// adapter / persistentTokens / realtime 는 테스트용 (가짜 서버, 메모리 토큰, 소켓 끄기)
   factory AppServices.create({HttpClientAdapter? adapter, bool persistentTokens = true, bool realtime = true}) {
     final api = ApiClient(TokenStore(persistent: persistentTokens), adapter: adapter);
-    return AppServices._(api, Session(api), ChatSocket(api.tokens), realtime);
+    return AppServices._(api, AppConfig.firebaseMode ? FirebaseSession(api) : Session(api),
+        ChatSocket(api.tokens), realtime && !AppConfig.firebaseMode);
   }
 
   final bool realtime;
@@ -63,6 +65,13 @@ class AppServices {
   String? _pushToken;
 
   Future<void> loadFeatures() async {
+    if (AppConfig.firebaseMode) {
+      // No REST server exists for the exhibition build. Feature-specific
+      // capabilities are surfaced within FirebaseExhibitionHome.
+      features.value = FeatureConfig.offline();
+      serverReachable = true;
+      return;
+    }
     try {
       features.value = FeatureConfig.fromJson(await api.get('/api/v1/config'));
       serverReachable = true;
@@ -92,6 +101,7 @@ class AppServices {
 
   /// 로그인 후 호출: 채팅 소켓 연결 + 푸시 등록
   Future<void> onLoggedIn() async {
+    if (AppConfig.firebaseMode) return;
     if (realtime) chatSocket.start();
     await refreshUnread();
     // 좋아요·댓글·팔로우 알림을 몇 초 안에 보여주기 위해 주기적으로 확인 (푸시가 없어도 동작)

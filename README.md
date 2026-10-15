@@ -68,3 +68,7 @@ Windows에서 `run.sh`는 Git Bash 또는 WSL에서 실행한다. `docker compos
 - 가짜 데이터·가짜 결제 성공 없음. 외부 서비스가 연결되지 않은 기능은 "준비 중"으로 표시
 - 비밀값은 환경변수로만. 저장소에 키 없음
 - 예약 중복·결제 금액·환불 한도는 앱이 아니라 **DB 제약과 서버**가 보장
+
+## Firebase Spark 전시용 빌드 (별도 기능 개발 중)
+
+VPS나 학교 현장 서버 PC 없이 Firebase Auth·Firestore로 실시간 계정/시연 예약/텍스트 SNS/1:1 채팅을 테스트하는 **별도 전시용 MVP**는 [Firebase 전시 모드 안내](docs/07-firebase-spark-exhibition.md)를 참고한다. 기존 Spring Boot 서비스를 대체하는 전체 기능 이관은 아직 완료되지 않았다. Firebase 전시 빌드는 `--dart-define=BACKEND=firebase`를 명시하며, 현재 구장은 **가상 시설 예시**이고 실제 결제 기능은 없다.

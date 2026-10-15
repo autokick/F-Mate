@@ -12,6 +12,13 @@ class AppConfig {
       String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8080');
   static const String env = String.fromEnvironment('ENV', defaultValue: 'dev');
 
+  /// Spark exhibition build: Firebase Auth + Firestore, no Spring Boot server.
+  /// Opt-in build flag; existing REST/Docker build is unchanged by default.
+  static const bool firebaseMode = String.fromEnvironment('BACKEND', defaultValue: 'spring') == 'firebase';
+
+  /// Public kiosk builds sign out at every cold start; do not reuse the prior visitor session.
+  static const bool exhibitionKiosk = bool.fromEnvironment('EXHIBITION_KIOSK', defaultValue: true);
+
   /// AndroidManifest 에 Google Maps API 키를 넣은 뒤에만 true 로 빌드한다.
   /// (키 없이 지도 위젯을 띄우면 앱이 종료되므로 기본 false)
   static const bool mapsEnabled = bool.fromEnvironment('MAPS_ENABLED');

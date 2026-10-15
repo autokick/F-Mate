@@ -34,7 +34,7 @@ class ReservationResultScreen extends StatelessWidget {
     } else {
       icon = Icons.error_outline_rounded;
       title = '결제가 완료되지 않았어요';
-      message = s?.failureMessage ?? '결제가 취소되었거나 실패했어요. 결제 시간이 남아 있으면 내 예약에서 다시 결제할 수 있어요.';
+      message = s.failureMessage ?? '결제가 취소되었거나 실패했어요. 결제 시간이 남아 있으면 내 예약에서 다시 결제할 수 있어요.';
       color = FmColors.danger;
     }
     return Scaffold(

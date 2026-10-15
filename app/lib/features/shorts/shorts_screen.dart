@@ -265,7 +265,7 @@ class _FeedItemPageState extends State<FeedItemPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _tickerOn = TickerMode.of(context);
+    _tickerOn = TickerMode.valuesOf(context).enabled;
     _scheduleSync();
   }
 

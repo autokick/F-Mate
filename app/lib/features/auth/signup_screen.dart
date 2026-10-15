@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
+import '../../core/config.dart';
 import '../../core/services.dart';
 import '../../core/theme.dart';
 import '../../core/validators.dart';
@@ -115,8 +116,10 @@ class _SignupScreenState extends State<SignupScreen> {
       );
       if (!mounted) return;
       // 가입되면 AuthGate 가 메인 화면으로 바꾼다. 이 화면은 닫는다.
+      showFmSnack(context, AppConfig.firebaseMode
+          ? '가입됐어요! 받은 메일의 인증 링크를 열어주세요.'
+          : '가입되었어요! 메일로 받은 인증 코드를 입력하면 예약할 수 있어요.');
       Navigator.of(context).popUntil((r) => r.isFirst);
-      showFmSnack(context, '가입되었어요! 메일로 받은 인증 코드를 입력하면 예약할 수 있어요.');
     } on ApiError catch (e) {
       if (!mounted) return;
       setState(() => _error = e.fieldErrors.isNotEmpty ? e.fieldErrors.values.first : e.message);
@@ -139,7 +142,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 keyboardType: TextInputType.emailAddress,
                 textInputAction: TextInputAction.next,
                 autofillHints: const [AutofillHints.email],
-                decoration: fmInputDecoration(label: '이메일', hint: '인증 코드를 받을 주소'),
+                decoration: fmInputDecoration(label: '이메일', hint: AppConfig.firebaseMode ? '인증 링크를 받을 이메일' : '인증 코드를 받을 주소'),
                 validator: Validators.email,
               ),
               const SizedBox(height: FmSpace.m),
