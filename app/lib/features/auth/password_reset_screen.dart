@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
+import '../../core/config.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/services.dart';
 import '../../core/theme.dart';
 import '../../core/validators.dart';
@@ -62,6 +64,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (AppConfig.firebaseMode) return const _FirebasePasswordResetScreen();
     return Scaffold(
       appBar: AppBar(title: const Text('비밀번호 찾기')),
       body: SafeArea(
@@ -112,6 +115,59 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+class _FirebasePasswordResetScreen extends StatefulWidget {
+  const _FirebasePasswordResetScreen();
+
+  @override
+  State<_FirebasePasswordResetScreen> createState() => _FirebasePasswordResetScreenState();
+}
+
+class _FirebasePasswordResetScreenState extends State<_FirebasePasswordResetScreen> {
+  final _email = TextEditingController();
+  bool _busy = false;
+  String? _message;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    super.dispose();
+  }
+
+  Future<void> _request() async {
+    if (Validators.email(_email.text) != null) {
+      setState(() => _message = '올바른 이메일을 입력하세요');
+      return;
+    }
+    setState(() { _busy = true; _message = null; });
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: _email.text.trim());
+      if (mounted) setState(() => _message = '재설정 링크를 보냈어요. 메일함을 확인해 주세요.');
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() => _message = '재설정 요청 실패: ${e.code}');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('비밀번호 재설정')),
+      body: SafeArea(child: ListView(padding: const EdgeInsets.all(FmSpace.xl), children: [
+        const Text('Firebase에서는 이메일의 링크에서 새 비밀번호를 설정합니다.'),
+        const SizedBox(height: 16),
+        TextField(controller: _email, keyboardType: TextInputType.emailAddress,
+          decoration: fmInputDecoration(label: '가입 이메일')),
+        if (_message != null) Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10), child: Text(_message!)),
+        const SizedBox(height: 14),
+        FilledButton(onPressed: _busy ? null : _request, child: const Text('비밀번호 재설정 링크 보내기')),
+      ])),
     );
   }
 }

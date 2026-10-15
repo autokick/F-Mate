@@ -1,0 +1,13 @@
+{
+  "name": "fmate-spark-rules-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore --project demo-fmate-spark 'node --test firestore.test.mjs'"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.0.2",
+    "firebase-tools": "^14.0.0"
+  }
+}

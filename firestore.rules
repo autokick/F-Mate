@@ -1,0 +1,133 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function loggedIn() {
+      return request.auth != null;
+    }
+    function verified() {
+      return loggedIn() && request.auth.token.email_verified == true;
+    }
+    function owner(uid) {
+      return loggedIn() && request.auth.uid == uid;
+    }
+    function keysExactly(data, keys) {
+      return data.keys().hasOnly(keys) && data.keys().hasAll(keys);
+    }
+
+    // Public nickname only. Do not store email, phone, consents, or passwords.
+    match /profiles/{uid} {
+      allow get, list: if loggedIn();
+      allow create: if owner(uid)
+        && keysExactly(request.resource.data, ['nickname', 'createdAt'])
+        && request.resource.data.nickname is string
+        && request.resource.data.nickname.size() >= 2
+        && request.resource.data.nickname.size() <= 20
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // The current user alone can see consent choices.
+    match /private_users/{uid} {
+      allow get: if owner(uid);
+      allow list: if false;
+      allow create: if owner(uid)
+        && keysExactly(request.resource.data, ['consents', 'createdAt'])
+        && request.resource.data.consents is map
+        && request.resource.data.consents.keys().hasOnly(
+          ['AGE_14', 'TERMS', 'PRIVACY', 'LOCATION', 'MARKETING'])
+        && request.resource.data.consents.AGE_14 == true
+        && request.resource.data.consents.TERMS == true
+        && request.resource.data.consents.PRIVACY == true
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    // PUBLIC EXHIBITION BOARD; no sensitive information may be posted.
+    match /demo_posts/{postId} {
+      allow get, list: if true;
+      allow create: if verified()
+        && keysExactly(request.resource.data, ['authorUid', 'authorName', 'body', 'createdAt'])
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorName is string
+        && request.resource.data.authorName ==
+          get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.nickname
+        && request.resource.data.body is string
+        && request.resource.data.body.size() >= 1
+        && request.resource.data.body.size() <= 400
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if owner(resource.data.authorUid);
+    }
+
+    // Only four fictional exhibition venues exist for this proof of concept.
+    // The document ID encodes (venue, date, hour); one document per slot makes
+    // simultaneous reservation attempts mutually exclusive in transactions.
+    match /demo_slots/{slotId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if verified()
+        && keysExactly(request.resource.data,
+          ['ownerUid', 'venueId', 'dateKey', 'hour', 'createdAt'])
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.venueId in ['demo-01', 'demo-02', 'demo-03', 'demo-04']
+        && request.resource.data.dateKey is string
+        && request.resource.data.dateKey.matches('^20[0-9]{6}$')
+        && request.resource.data.hour is int
+        && (
+             (request.resource.data.hour == 18 && slotId == request.resource.data.venueId + '_' + request.resource.data.dateKey + '_18')
+          || (request.resource.data.hour == 19 && slotId == request.resource.data.venueId + '_' + request.resource.data.dateKey + '_19')
+          || (request.resource.data.hour == 20 && slotId == request.resource.data.venueId + '_' + request.resource.data.dateKey + '_20')
+        )
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if owner(resource.data.ownerUid);
+    }
+
+    // Two-member rooms only. All IDs are genuine Firebase Auth UIDs.
+    match /demo_chats/{chatId} {
+      function member() {
+        return loggedIn() && request.auth.uid in resource.data.members;
+      }
+      function validMembers() {
+        return request.resource.data.members is list
+          && request.resource.data.members.size() == 2
+          && request.resource.data.members[0] is string
+          && request.resource.data.members[1] is string
+          && request.resource.data.members[0] != request.resource.data.members[1]
+          && request.auth.uid in request.resource.data.members
+          && chatId == request.resource.data.members[0] + '_' + request.resource.data.members[1]
+          && exists(/databases/$(database)/documents/profiles/$(request.resource.data.members[0]))
+          && exists(/databases/$(database)/documents/profiles/$(request.resource.data.members[1]));
+      }
+      allow get, list: if member();
+      allow create: if verified()
+        && keysExactly(request.resource.data, ['members', 'createdAt'])
+        && validMembers()
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+
+      match /messages/{messageId} {
+        function roomMember() {
+          return loggedIn() && request.auth.uid in
+            get(/databases/$(database)/documents/demo_chats/$(chatId)).data.members;
+        }
+        allow get, list: if roomMember();
+        allow create: if verified() && roomMember()
+          && keysExactly(request.resource.data, ['authorUid', 'text', 'sentAt'])
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1
+          && request.resource.data.text.size() <= 500
+          && request.resource.data.sentAt == request.time;
+        allow update: if false;
+        allow delete: if roomMember() && owner(resource.data.authorUid);
+      }
+    }
+
+    // Keep all unported features denied by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

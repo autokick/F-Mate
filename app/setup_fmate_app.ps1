@@ -19,7 +19,8 @@
 param(
     [string]$Target = "C:\dev\fmate_app",
     [string]$Flutter = "",
-    [switch]$Force
+    [switch]$Force,
+    [switch]$Firebase
 )
 
 $ErrorActionPreference = "Stop"
@@ -80,6 +81,40 @@ foreach ($g in @($gradleKts, $gradleGroovy)) {
             Write-Host "minSdk -> 24 ($g)"
         }
     }
+}
+
+# 3a2. Firebase Spark exhibition build: keep a distinct Android application ID.
+#      app.fmate must exist as an Android app in Firebase project f-mate.
+if ($Firebase) {
+    $appGradleKts = Join-Path $Target "android\app\build.gradle.kts"
+    if (-not (Test-Path $appGradleKts)) {
+        throw "Firebase auto-setup currently supports Flutter's Kotlin Gradle DSL (build.gradle.kts) only."
+    }
+    $t = [System.IO.File]::ReadAllText($appGradleKts)
+    if ($t -notmatch 'applicationId\s*=\s*"[^"]+"') {
+        throw "No applicationId was found in $appGradleKts"
+    }
+    $t = [regex]::Replace($t, 'applicationId\s*=\s*"[^"]+"', 'applicationId = "app.fmate"')
+    if ($t -notmatch 'com\.google\.gms\.google-services') {
+        $m = [regex]::Match($t, '(?ms)^\s*plugins\s*\{.*?^\s*\}')
+        if (-not $m.Success) { throw "Gradle plugins block missing: $appGradleKts" }
+        $t = $t.Insert($m.Index + $m.Length - 1, "    id(`"com.google.gms.google-services`")`n")
+    }
+    Write-Utf8NoBom $appGradleKts $t
+    $settings = Join-Path $Target "android\settings.gradle.kts"
+    if (-not (Test-Path $settings)) { throw "Missing settings.gradle.kts" }
+    $t = [System.IO.File]::ReadAllText($settings)
+    if ($t -notmatch 'com\.google\.gms\.google-services') {
+        $m = [regex]::Match($t, '(?ms)^\s*plugins\s*\{.*?^\s*\}')
+        if (-not $m.Success) { throw "Gradle plugins block missing: $settings" }
+        $t = $t.Insert($m.Index + $m.Length - 1, "    id(`"com.google.gms.google-services`") version `"4.4.2`" apply false`n")
+    }
+    Write-Utf8NoBom $settings $t
+    $googleServices = Join-Path $Target "android\app\google-services.json"
+    if (-not (Test-Path $googleServices)) {
+        Write-Warning "Download google-services.json for Android app.fmate from Firebase Console and place it at $googleServices before building."
+    }
+    Write-Host "Firebase Spark Gradle setup completed (applicationId=app.fmate)."
 }
 
 # 3b. main AndroidManifest: permissions, label, queries

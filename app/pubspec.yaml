@@ -32,6 +32,8 @@ dependencies:
   # 푸시 알림 (FCM 전송 채널로만 사용)
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.5
+  firebase_auth: ^5.3.3
+  cloud_firestore: ^5.5.1
 
 dev_dependencies:
   flutter_test:
