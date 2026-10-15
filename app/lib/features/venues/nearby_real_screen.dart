@@ -288,11 +288,13 @@ class _PlaceCard extends StatelessWidget {
             Text(sub, style: const TextStyle(fontSize: 13, color: FmColors.textSecondary)),
           ],
           const SizedBox(height: FmSpace.s),
-          Row(
+          Wrap(
+            spacing: FmSpace.s,
+            runSpacing: FmSpace.s,
             children: [
               if (onCall != null)
                 Padding(
-                  padding: const EdgeInsets.only(right: FmSpace.s),
+                  padding: EdgeInsets.zero,
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
                     onPressed: onCall,
@@ -302,7 +304,7 @@ class _PlaceCard extends StatelessWidget {
                 ),
               if (onMap != null)
                 Padding(
-                  padding: const EdgeInsets.only(right: FmSpace.s),
+                  padding: EdgeInsets.zero,
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
                     onPressed: onMap,
@@ -310,7 +312,6 @@ class _PlaceCard extends StatelessWidget {
                     label: const Text('카카오맵'),
                   ),
                 ),
-              const Spacer(),
               FilledButton(
                 style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
                 onPressed: onTryBooking,
