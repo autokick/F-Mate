@@ -505,7 +505,10 @@ class _VenueDetailViewState extends State<_VenueDetailView> {
                     physics: const NeverScrollableScrollPhysics(),
                     mainAxisSpacing: 8,
                     crossAxisSpacing: 8,
-                    childAspectRatio: 1.3,
+                    // Keep two text rows legible even with larger system text.
+                    // Aspect-ratio sizing produced 57px tiles on narrow phones
+                    // and overflowed with accessibility text scaling.
+                    mainAxisExtent: 84,
                     padding: EdgeInsets.zero,
                     children: [
                       for (final s in court.slots)

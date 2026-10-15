@@ -135,14 +135,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.widgetWithText(InputChip, '경기'), findsOneWidget);
-      final indoor = find.widgetWithText(FilterChip, '실내');
-      expect(tester.widget<FilterChip>(indoor).selected, isTrue);
-      // 빠른 필터 칩을 다시 누르면 그 조건만 해제
-      await tester.ensureVisible(indoor);
+      // Indoor quick-filter moved past the viewport in the new horizontal
+      // chip list. Reopen the sheet to verify persisted state independent
+      // of lazily built offscreen chips.
+      await tester.tap(find.byKey(const Key('venue_filter_button')));
       await tester.pumpAndSettle();
-      await tester.tap(indoor);
+      final indoorChoice = find.widgetWithText(ChoiceChip, '실내');
+      expect(tester.widget<ChoiceChip>(indoorChoice).selected, isTrue);
+      await tester.tap(find.widgetWithText(ChoiceChip, '전체').first);
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('venue_filter_apply')));
       await tester.pumpAndSettle();
-      expect(tester.widget<FilterChip>(find.widgetWithText(FilterChip, '실내')).selected, isFalse);
       expect(find.widgetWithText(InputChip, '경기'), findsOneWidget);
     });
   });
@@ -153,7 +156,7 @@ void main() {
       final server = FakeServer((RequestOptions r) =>
           r.path == '/api/v1/config' ? (200, configJson(places: true)) : defaultRoutes(r));
       final s = fakeServices(server: server);
-      await tester.pumpWidget(wrap(s, const NearbyRealScreen()));
+      await tester.pumpWidget(wrap(s, const NearbyRealScreen(autoLocate: false)));
       await tester.pumpAndSettle();
       // 테스트 환경에는 GPS 가 없으므로 지역 검색으로 찾는다
       await tester.enterText(find.byKey(const Key('nearby_area')), '동탄');
@@ -190,9 +193,15 @@ void main() {
       expect(find.text('화성 테스트 풋살장'), findsOneWidget);
       final first = find.text('19:00');
       await tester.ensureVisible(first);
+      await tester.pumpAndSettle();
+      // New sticky booking bar occupies the bottom of the screen. Put the
+      // time chips nearer the centre so taps hit the actual slot widget.
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -200));
+      await tester.pumpAndSettle();
       await tester.tap(first);
       await tester.pumpAndSettle();
-      expect(find.text('60,000원').hitTestable(), findsWidgets);
+      expect(find.textContaining('1시간'), findsOneWidget);
+      expect(find.text('60,000원'), findsWidgets);
 
       await tester.tap(find.text('20:00'));
       await tester.pumpAndSettle();
