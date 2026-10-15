@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/services.dart';
 import '../core/theme.dart';
 import '../features/auth/verify_email_screen.dart';
+import 'payment/toss_test_checkout.dart';
 
 /// First implementation stage for the zero-VPS Spark build. This is intentionally
 /// isolated from the Spring-based 38-screen app until each repository is ported.
@@ -156,6 +157,25 @@ class _DemoVenueList extends StatelessWidget {
           title: Text('아래 구장 이름·요금은 모두 예시입니다'),
           subtitle: Text('공공데이터 구장 수백 개의 이관은 후속 단계입니다. 실제 예약·결제가 아닙니다.'),
         ),
+        Card(
+          child: ListTile(
+            leading: const CircleAvatar(
+              child: Icon(Icons.account_balance_wallet_outlined),
+            ),
+            title: const Text('토스페이먼츠 실제 TEST 결제창'),
+            subtitle: const Text('토스 공식 SDK 호출 · 실제 청구 없음 · 게스트도 체험 가능'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const TossTestCheckout(
+                  venueName: '시연용 풋살장 A',
+                  amount: 45000,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
         for (final venue in _demoVenues)
           Card(
             child: ListTile(
@@ -213,8 +233,9 @@ class _DemoVenueBookingState extends State<_DemoVenueBooking> {
           'createdAt': FieldValue.serverTimestamp(),
         });
       });
-      if (mounted)
-        _notify(context, '전시용 예약이 Firestore에 저장됐어요. 실제 예약·청구는 없습니다.');
+      if (mounted) {
+        _notify(context, '전시 예약이 저장됐어요. 아래에서 토스 TEST 결제도 체험할 수 있어요.');
+      }
     } catch (e) {
       if (mounted) _notify(context, '예약 실패: $e');
     } finally {
@@ -270,32 +291,61 @@ class _DemoVenueBookingState extends State<_DemoVenueBooking> {
                     final mine =
                         booked && data?['ownerUid'] == uid && uid != null;
                     return Card(
-                      child: ListTile(
-                        title: Text('$hour:00 ~ ${hour + 1}:00'),
-                        subtitle: Text(
-                          snapshot.hasError
-                              ? 'DB 연결 또는 보안 규칙을 확인하세요'
-                              : booked
-                              ? (mine ? '내 전시 예약' : '다른 체험자가 선점함')
-                              : '시연 예약 가능',
-                        ),
-                        trailing: TextButton(
-                          onPressed:
-                              _busy ||
-                                  snapshot.hasError ||
-                                  !snapshot.hasData ||
-                                  (booked && !mine)
-                              ? null
-                              : () =>
-                                    mine ? _cancel(ref) : _book(ref, day, hour),
-                          child: Text(
-                            mine
-                                ? '취소'
-                                : booked
-                                ? '예약됨'
-                                : '예약',
+                      child: Column(
+                        children: [
+                          ListTile(
+                            title: Text('$hour:00 ~ ${hour + 1}:00'),
+                            subtitle: Text(
+                              snapshot.hasError
+                                  ? 'DB 연결 또는 보안 규칙을 확인하세요'
+                                  : booked
+                                  ? (mine ? '내 전시 예약' : '다른 체험자가 선점함')
+                                  : '시연 예약 가능',
+                            ),
+                            trailing: TextButton(
+                              onPressed:
+                                  _busy ||
+                                      snapshot.hasError ||
+                                      !snapshot.hasData ||
+                                      (booked && !mine)
+                                  ? null
+                                  : () => mine
+                                        ? _cancel(ref)
+                                        : _book(ref, day, hour),
+                              child: Text(
+                                mine
+                                    ? '취소'
+                                    : booked
+                                    ? '예약됨'
+                                    : '예약',
+                              ),
+                            ),
                           ),
-                        ),
+                          if (mine)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                right: 12,
+                                bottom: 6,
+                              ),
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  icon: const Icon(Icons.payment, size: 17),
+                                  label: const Text('토스 TEST 결제 체험'),
+                                  onPressed: _busy
+                                      ? null
+                                      : () => Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => TossTestCheckout(
+                                              venueName: widget.venue.name,
+                                              amount: widget.venue.price,
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     );
                   },

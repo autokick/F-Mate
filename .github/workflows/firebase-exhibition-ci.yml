@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/firebase-spark-exhibition-20261015
+      - feature/toss-test-release-20261015
   pull_request:
     branches:
       - capstone/demo-20261013
@@ -46,3 +47,51 @@ jobs:
       - name: Verify Firestore security rules
         working-directory: firebase-tests
         run: npm test
+
+  android-apk:
+    if: github.ref == 'refs/heads/feature/toss-test-release-20261015'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      F_MATE_GOOGLE_SERVICES_JSON: ${{ secrets.F_MATE_GOOGLE_SERVICES_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Create ephemeral Android platform project
+        working-directory: app
+        run: flutter create --platforms=android --org app.fmate --project-name fmate_app --no-pub .
+      - name: Configure Android app and Google Services
+        run: |
+          test -n "$F_MATE_GOOGLE_SERVICES_JSON"
+          python3 scripts/prepare_android_firebase.py
+          printf '%s' "$F_MATE_GOOGLE_SERVICES_JSON" > app/android/app/google-services.json
+          jq -e '.project_info.project_id == "f-mate" and any(.client[]; .client_info.android_client_info.package_name == "app.fmate")' app/android/app/google-services.json > /dev/null
+          test -z "$(git status --porcelain -- app/lib app/pubspec.yaml)"
+      - name: Resolve Flutter dependencies
+        working-directory: app
+        run: flutter pub get
+      - name: Analyze Flutter application
+        working-directory: app
+        run: flutter analyze
+      - name: Build ARM64 Android APK
+        working-directory: app
+        run: flutter build apk --release --target-platform android-arm64 --dart-define=BACKEND=firebase --dart-define=EXHIBITION_KIOSK=true
+      - name: Validate APK output
+        run: |
+          test -s app/build/app/outputs/flutter-apk/app-release.apk
+          sha256sum app/build/app/outputs/flutter-apk/app-release.apk
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: F-Mate-Spark-Toss-TEST-arm64-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 7

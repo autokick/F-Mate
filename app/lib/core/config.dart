@@ -26,6 +26,13 @@ class AppConfig {
   /// google-services.json 을 넣은 뒤에만 true. 아니면 푸시 초기화를 건너뛴다.
   static const bool pushEnabled = bool.fromEnvironment('PUSH_ENABLED');
 
+  /// Public documentation *TEST* client key from TossPayments Flutter example.
+  /// Never use a live key in an exhibition APK.
+  static const String tossTestClientKey = String.fromEnvironment(
+    'TOSS_TEST_CLIENT_KEY',
+    defaultValue: 'test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm',
+  );
+
   static const String appVersion = '1.0.0';
 
   /// 오른쪽 위 '초기화면' 버튼 (전시용, 기본 켜짐). 끄려면 --dart-define=HOME_BUTTON=false
