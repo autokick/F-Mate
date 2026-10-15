@@ -359,7 +359,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                     child: TextField(
                       key: const Key('compose_caption'),
                       controller: _caption,
-                      maxLength: 2200,
+                      maxLength: AppConfig.firebaseMode ? 400 : 2200,
                       minLines: 6,
                       maxLines: 10,
                       style: const TextStyle(fontSize: 16, height: 1.55),
@@ -432,6 +432,10 @@ class _ComposeScreenState extends State<ComposeScreen> {
                 onChanged: (v) => setState(() => _highlight = v),
               ),
               const SizedBox(height: FmSpace.s),
+              if (AppConfig.firebaseMode)
+                const Text('Firebase 무료 전시 모드에서는 공개 텍스트 게시물만 지원합니다. '
+                    '사진·영상 업로드와 비공개 공개 범위는 아직 지원하지 않습니다.',
+                    style: TextStyle(fontSize: 12, color: FmColors.textTertiary)),
               const Text('타인의 영상·음악 등 저작물을 무단으로 올리면 삭제될 수 있어요.',
                   style: TextStyle(fontSize: 12, color: FmColors.textTertiary)),
             ],

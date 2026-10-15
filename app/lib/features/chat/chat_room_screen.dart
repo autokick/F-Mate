@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/chat_socket.dart';
+import '../../firebase_original_ui/firebase_chat_socket.dart';
 import '../../core/format.dart';
 import '../../core/models.dart';
 import '../../core/services.dart';
@@ -41,7 +42,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _summary = widget.initial;
     _otherRead = widget.initial?.otherLastRead ?? 0;
     _scroll.addListener(() {
-      if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 200) _loadOlder();
+      if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 200)
+        _loadOlder();
     });
   }
 
@@ -52,11 +54,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _s = AppScope.of(context);
     _sub = _s.chatSocket.events.listen(_onEvent);
     if (_s.realtime) _s.chatSocket.start();
+    if (_s.chatSocket is FirebaseChatSocket) {
+      (_s.chatSocket as FirebaseChatSocket).watchChat(widget.chatId);
+    }
     _load();
   }
 
   @override
   void dispose() {
+    if (_s.chatSocket is FirebaseChatSocket) {
+      (_s.chatSocket as FirebaseChatSocket).unwatchChat(widget.chatId);
+    }
     _sub?.cancel();
     _input.dispose();
     _scroll.dispose();
@@ -91,7 +99,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (_loadingOlder || !_hasOlder || _messages.isEmpty) return;
     _loadingOlder = true;
     try {
-      final firstId = _messages.firstWhere((m) => m.id > 0, orElse: () => _messages.first).id;
+      final firstId = _messages
+          .firstWhere((m) => m.id > 0, orElse: () => _messages.first)
+          .id;
       final older = await _s.chats.messages(widget.chatId, before: firstId);
       if (!mounted) return;
       setState(() {
@@ -107,7 +117,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   /// 재연결 후 누락분 동기화
   Future<void> _syncAfterReconnect() async {
-    final lastId = _messages.where((m) => m.id > 0).fold<int>(0, (a, m) => m.id > a ? m.id : a);
+    final lastId = _messages
+        .where((m) => m.id > 0)
+        .fold<int>(0, (a, m) => m.id > a ? m.id : a);
     try {
       final missed = await _s.chats.messages(widget.chatId, after: lastId);
       if (!mounted || missed.isEmpty) return;
@@ -131,7 +143,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         if (message.senderId != _myId) _markRead();
       case AckEvent(:final clientMessageId, :final message):
         setState(() {
-          _messages.removeWhere((m) => m.clientMessageId == clientMessageId && m.id <= 0);
+          _messages.removeWhere(
+              (m) => m.clientMessageId == clientMessageId && m.id <= 0);
           _upsert(message);
         });
       case SendErrorEvent(:final clientMessageId, :final code, :final message):
@@ -144,7 +157,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             }
           }
         });
-        showFmSnack(context, code == 'BLOCKED' ? '차단 관계라 메시지를 보낼 수 없어요' : (message ?? '메시지를 보내지 못했어요'));
+        showFmSnack(
+            context,
+            code == 'BLOCKED'
+                ? '차단 관계라 메시지를 보낼 수 없어요'
+                : (message ?? '메시지를 보내지 못했어요'));
       case ReadEvent(:final chatId, :final messageId):
         if (chatId == widget.chatId) setState(() => _otherRead = messageId);
       case ConnectionEvent(:final connected):
@@ -154,7 +171,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   void _upsert(ChatMessage m) {
-    final idx = _messages.indexWhere((x) => x.id == m.id && m.id > 0 || x.clientMessageId == m.clientMessageId);
+    final idx = _messages.indexWhere((x) =>
+        x.id == m.id && m.id > 0 || x.clientMessageId == m.clientMessageId);
     if (idx >= 0) {
       _messages[idx] = m;
     } else {
@@ -167,7 +185,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   void _markRead() {
-    final lastFromOther = _messages.where((m) => m.senderId != _myId && m.id > 0);
+    final lastFromOther =
+        _messages.where((m) => m.senderId != _myId && m.id > 0);
     if (lastFromOther.isEmpty) return;
     final id = lastFromOther.last.id;
     if (_s.chatSocket.connected) {
@@ -229,17 +248,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         title: GestureDetector(
           onTap: other == null
               ? null
-              : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => UserProfileScreen(userId: other.id))),
+              : () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => UserProfileScreen(userId: other.id))),
           child: Row(children: [
-            if (other != null) AppAvatar(url: other.avatarUrl, name: other.nickname, size: 32),
+            if (other != null)
+              AppAvatar(url: other.avatarUrl, name: other.nickname, size: 32),
             const SizedBox(width: FmSpace.s),
-            Expanded(child: Text(other?.nickname ?? '채팅', overflow: TextOverflow.ellipsis)),
+            Expanded(
+                child: Text(other?.nickname ?? '채팅',
+                    overflow: TextOverflow.ellipsis)),
           ]),
         ),
         actions: [
           PopupMenuButton<String>(
             onSelected: (v) async {
-              if (v == 'report' && other != null) await showReportSheet(context, 'USER', other.id);
+              if (v == 'report' && other != null)
+                await showReportSheet(context, 'USER', other.id);
               if (v == 'leave') {
                 await _s.chats.hide(widget.chatId);
                 if (context.mounted) Navigator.of(context).pop();
@@ -257,7 +281,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 preferredSize: Size.fromHeight(24),
                 child: Padding(
                   padding: EdgeInsets.only(bottom: 4),
-                  child: Text('실시간 연결 중... (메시지는 계속 보낼 수 있어요)', style: TextStyle(fontSize: 12, color: FmColors.textSecondary)),
+                  child: Text('실시간 연결 중... (메시지는 계속 보낼 수 있어요)',
+                      style: TextStyle(
+                          fontSize: 12, color: FmColors.textSecondary)),
                 ),
               ),
       ),
@@ -267,7 +293,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             child: _loading
                 ? const LoadingState()
                 : _messages.isEmpty
-                    ? const EmptyState(icon: Icons.waving_hand_outlined, title: '첫 메시지를 보내 보세요')
+                    ? const EmptyState(
+                        icon: Icons.waving_hand_outlined,
+                        title: '첫 메시지를 보내 보세요')
                     : ListView.builder(
                         controller: _scroll,
                         reverse: true,
@@ -276,12 +304,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         itemBuilder: (context, i) {
                           final m = _messages[_messages.length - 1 - i];
                           final mine = m.senderId == _myId;
-                          final isLastMine = mine && m.id > 0 &&
-                              _messages.lastWhere((x) => x.senderId == _myId && x.id > 0, orElse: () => m).id == m.id;
+                          final isLastMine = mine &&
+                              m.id > 0 &&
+                              _messages
+                                      .lastWhere(
+                                          (x) =>
+                                              x.senderId == _myId && x.id > 0,
+                                          orElse: () => m)
+                                      .id ==
+                                  m.id;
                           return _Bubble(
                             message: m,
                             mine: mine,
-                            read: mine && m.id > 0 && m.id <= _otherRead && isLastMine,
+                            read: mine &&
+                                m.id > 0 &&
+                                m.id <= _otherRead &&
+                                isLastMine,
                             onRetry: m.failed ? () => _send(m) : null,
                           );
                         },
@@ -290,13 +328,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           if (_summary?.blocked == true)
             const Padding(
               padding: EdgeInsets.all(FmSpace.m),
-              child: Text('차단 관계라 메시지를 보낼 수 없어요', style: TextStyle(color: FmColors.textSecondary)),
+              child: Text('차단 관계라 메시지를 보낼 수 없어요',
+                  style: TextStyle(color: FmColors.textSecondary)),
             )
           else
             SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(FmSpace.m, FmSpace.xs, FmSpace.xs, FmSpace.s),
+                padding: const EdgeInsets.fromLTRB(
+                    FmSpace.m, FmSpace.xs, FmSpace.xs, FmSpace.s),
                 child: Row(
                   children: [
                     Expanded(
@@ -310,13 +350,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                           counterText: '',
                           filled: true,
                           fillColor: FmColors.surfaceMuted,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: FmSpace.l, vertical: FmSpace.s),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: FmSpace.l, vertical: FmSpace.s),
                         ),
                       ),
                     ),
                     IconButton(
-                        tooltip: '보내기', icon: const Icon(Icons.send_rounded, color: FmColors.brandDark), onPressed: () => _send()),
+                        tooltip: '보내기',
+                        icon: const Icon(Icons.send_rounded,
+                            color: FmColors.brandDark),
+                        onPressed: () => _send()),
                   ],
                 ),
               ),
@@ -328,7 +374,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.message, required this.mine, required this.read, this.onRetry});
+  const _Bubble(
+      {required this.message,
+      required this.mine,
+      required this.read,
+      this.onRetry});
 
   final ChatMessage message;
   final bool mine;
@@ -347,12 +397,15 @@ class _Bubble extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Column(
-          crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment:
+              mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+              constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.72),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: mine ? FmColors.brandDark : FmColors.surfaceMuted,
                   borderRadius: BorderRadius.circular(18),
@@ -361,7 +414,8 @@ class _Bubble extends StatelessWidget {
                   message.body,
                   style: TextStyle(
                     color: mine ? Colors.white : FmColors.textPrimary,
-                    fontStyle: message.deleted ? FontStyle.italic : FontStyle.normal,
+                    fontStyle:
+                        message.deleted ? FontStyle.italic : FontStyle.normal,
                     fontSize: 15,
                   ),
                 ),
@@ -372,7 +426,11 @@ class _Bubble extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(top: 2, left: 4, right: 4),
                 child: Text(meta,
-                    style: TextStyle(fontSize: 11, color: message.failed ? FmColors.danger : FmColors.textSecondary)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: message.failed
+                            ? FmColors.danger
+                            : FmColors.textSecondary)),
               ),
             ),
           ],

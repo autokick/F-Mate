@@ -147,6 +147,9 @@ class FirebaseSession extends Session {
         nickname: nickname?.isNotEmpty == true
             ? nickname!
             : (user.displayName ?? '체험 회원'),
+        bio: profile.data()?['bio'] as String?,
+        regionCode: profile.data()?['regionCode'] as String?,
+        preferredPosition: profile.data()?['preferredPosition'] as String?,
         isPrivate: false,
         counts: Counts(0, 0, 0),
         hasPassword: true,
