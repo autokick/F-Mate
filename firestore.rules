@@ -24,7 +24,19 @@ service cloud.firestore {
         && request.resource.data.nickname.size() >= 2
         && request.resource.data.nickname.size() <= 20
         && request.resource.data.createdAt == request.time;
-      allow update, delete: if false;
+      allow update: if owner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['nickname', 'bio', 'regionCode', 'preferredPosition'])
+        && request.resource.data.nickname is string
+        && request.resource.data.nickname.size() >= 2
+        && request.resource.data.nickname.size() <= 20
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 300
+        && request.resource.data.regionCode is string
+        && request.resource.data.regionCode.size() <= 5
+        && request.resource.data.preferredPosition in
+          ['', 'PIVO', 'ALA', 'FIXO', 'GOLEIRO', 'ANY'];
+      allow delete: if false;
     }
 
     // The current user alone can see consent choices.
@@ -43,6 +55,50 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Each authenticated visitor's own fictional reservation receipts.
+    // This is a private subcollection; other accounts cannot list or read it.
+    match /private_users/{uid}/demo_reservations/{reservationId} {
+      allow get, list: if owner(uid);
+      allow create: if verified() && owner(uid)
+        && reservationId.matches('^[a-zA-Z0-9_-]{8,128}$')
+        && keysExactly(request.resource.data,
+          ['ownerUid', 'venueId', 'courtId', 'startsAt', 'endsAt',
+           'totalAmount', 'status', 'createdAt'])
+        && request.resource.data.ownerUid == uid
+        && request.resource.data.venueId in [101, 102, 103, 104]
+        && request.resource.data.courtId ==
+          request.resource.data.venueId * 10 + 1
+        && request.resource.data.startsAt is timestamp
+        && request.resource.data.endsAt is timestamp
+        && request.resource.data.startsAt < request.resource.data.endsAt
+        && request.resource.data.totalAmount is int
+        && request.resource.data.totalAmount >= 40000
+        && request.resource.data.totalAmount <= 180000
+        && request.resource.data.status == 'PENDING_PAYMENT'
+        && request.resource.data.createdAt == request.time;
+      allow update: if verified() && owner(uid)
+        && resource.data.ownerUid == uid
+        && resource.data.status == 'PENDING_PAYMENT'
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'canceledAt', 'cancelReason'])
+        && request.resource.data.status == 'CANCELED'
+        && request.resource.data.canceledAt == request.time
+        && request.resource.data.cancelReason is string
+        && request.resource.data.cancelReason.size() <= 120;
+      allow delete: if false;
+    }
+
+    // Saved posts are private to the owner, like reservation receipts.
+    match /private_users/{uid}/saved_posts/{postId} {
+      allow get, list: if owner(uid);
+      allow create: if verified() && owner(uid)
+        && keysExactly(request.resource.data, ['createdAt'])
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/demo_posts/$(postId));
+      allow delete: if owner(uid);
+      allow update: if false;
+    }
+
     // PUBLIC EXHIBITION BOARD; no sensitive information may be posted.
     match /demo_posts/{postId} {
       allow get, list: if true;
@@ -58,6 +114,35 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
       allow update: if false;
       allow delete: if owner(resource.data.authorUid);
+    }
+
+    match /demo_posts/{postId}/likes/{uid} {
+      allow get, list: if true;
+      allow create: if verified() && owner(uid)
+        && keysExactly(request.resource.data, ['createdAt'])
+        && request.resource.data.createdAt == request.time;
+      allow delete: if owner(uid);
+      allow update: if false;
+    }
+
+    match /demo_posts/{postId}/comments/{commentId} {
+      allow get, list: if true;
+      allow create: if verified()
+        && keysExactly(request.resource.data,
+          ['authorUid', 'authorName', 'body', 'parentId', 'createdAt'])
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorName ==
+          get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.nickname
+        && request.resource.data.body is string
+        && request.resource.data.body.size() >= 1
+        && request.resource.data.body.size() <= 1000
+        && (request.resource.data.parentId == null ||
+            request.resource.data.parentId is string)
+        && request.resource.data.createdAt == request.time;
+      allow delete: if verified() &&
+        (owner(resource.data.authorUid) ||
+          get(/databases/$(database)/documents/demo_posts/$(postId)).data.authorUid == request.auth.uid);
+      allow update: if false;
     }
 
     // Only four fictional exhibition venues exist for this proof of concept.

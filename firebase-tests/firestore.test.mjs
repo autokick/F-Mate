@@ -10,7 +10,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import {
   collection, deleteDoc, doc, getDoc, getDocs,
-  serverTimestamp, setDoc,
+  serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,4 +99,66 @@ test('chats isolate 1:1 members', async () => {
 test('all other collections stay closed', async () => {
   await assertFails(setDoc(doc(verified('alice'), 'payments/not-real'), {status:'paid'}));
   assert.ok(true);
+});
+
+
+test('private exhibition reservation records allow owner only', async () => {
+  const alice = verified('alice');
+  const bob = verified('bob');
+  const path = 'private_users/alice/demo_reservations/booking-12345';
+  await assertSucceeds(setDoc(doc(alice, path), {
+    ownerUid: 'alice', venueId: 101, courtId: 1011,
+    startsAt: new Date('2099-12-31T09:00:00Z'),
+    endsAt: new Date('2099-12-31T10:00:00Z'),
+    totalAmount: 45000, status: 'PENDING_PAYMENT',
+    createdAt: serverTimestamp(),
+  }));
+  await assertSucceeds(getDoc(doc(alice, path)));
+  await assertFails(getDoc(doc(bob, path)));
+  await assertFails(setDoc(doc(bob, 'private_users/alice/demo_reservations/booking-evil'), {
+    ownerUid: 'alice', venueId: 101, courtId: 1011,
+    startsAt: new Date('2099-12-31T09:00:00Z'),
+    endsAt: new Date('2099-12-31T10:00:00Z'),
+    totalAmount: 45000, status: 'PENDING_PAYMENT',
+    createdAt: serverTimestamp(),
+  }));
+  await assertFails(deleteDoc(doc(alice, path)));
+});
+
+
+test('likes, comments, and saved posts use member-scoped rules', async () => {
+  const alice = verified('alice');
+  const bob = verified('bob');
+  await assertSucceeds(setDoc(doc(alice, 'demo_posts/p2/likes/alice'), {
+    createdAt: serverTimestamp(),
+  }));
+  await assertFails(setDoc(doc(bob, 'demo_posts/p2/likes/alice'), {
+    createdAt: serverTimestamp(),
+  }));
+  await assertSucceeds(setDoc(doc(alice, 'demo_posts/p2/comments/c1'), {
+    authorUid: 'alice', authorName: '앨리스', body: '좋아요', parentId: null,
+    createdAt: serverTimestamp(),
+  }));
+  await assertFails(setDoc(doc(bob, 'demo_posts/p2/comments/c2'), {
+    authorUid: 'alice', authorName: '앨리스', body: '위조 댓글', parentId: null,
+    createdAt: serverTimestamp(),
+  }));
+  await assertSucceeds(setDoc(doc(alice, 'private_users/alice/saved_posts/p2'), {
+    createdAt: serverTimestamp(),
+  }));
+  await assertFails(getDoc(doc(bob, 'private_users/alice/saved_posts/p2')));
+});
+
+
+test('profile editing is limited to the owner and safe public fields', async () => {
+  const alice = verified('alice');
+  await assertSucceeds(updateDoc(doc(alice, 'profiles/alice'), {
+    nickname: '앨리스', bio: '풋살 좋아요', regionCode: '11', preferredPosition: 'ALA',
+  }));
+  await assertFails(updateDoc(doc(verified('bob'), 'profiles/alice'), {
+    nickname: '빼앗음',
+  }));
+  await assertFails(updateDoc(doc(alice, 'profiles/alice'), {
+    isAdmin: true,
+  }));
 });

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'core/config.dart';
-import 'firebase_exhibition/exhibition_home.dart';
 import 'firebase_exhibition/exhibition_idle_guard.dart';
 import 'core/services.dart';
 import 'core/session.dart';
@@ -124,13 +123,9 @@ class _AuthGateState extends State<AuthGate> {
         // 사용자가 바뀌면(게스트→로그인, 계정 전환) 탭 화면 상태를 새로 만든다
         if (session.isLoggedIn) {
           if (session.me!.needsProfile) return const ProfileSetupScreen();
-          return AppConfig.firebaseMode
-              ? FirebaseExhibitionHome(key: ValueKey('firebase-${session.me!.id}'))
-              : MainShell(key: ValueKey('user-${session.me!.id}'));
+          return MainShell(key: ValueKey('user-${session.me!.id}'));
         }
-        if (session.guest) return AppConfig.firebaseMode
-            ? const FirebaseExhibitionHome(key: ValueKey('firebase-guest'))
-            : const MainShell(key: ValueKey('guest'));
+        if (session.guest) return const MainShell(key: ValueKey('guest'));
         return const LoginScreen();
       },
     );

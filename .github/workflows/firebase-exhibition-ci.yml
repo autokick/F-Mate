@@ -5,6 +5,7 @@ on:
     branches:
       - feature/firebase-spark-exhibition-20261015
       - feature/toss-test-release-20261015
+      - feature/firebase-collaborator-ui-20261015
   pull_request:
     branches:
       - capstone/demo-20261013
@@ -49,7 +50,7 @@ jobs:
         run: npm test
 
   android-apk:
-    if: github.ref == 'refs/heads/feature/toss-test-release-20261015'
+    if: github.ref == 'refs/heads/feature/toss-test-release-20261015' || github.ref == 'refs/heads/feature/firebase-collaborator-ui-20261015'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -90,7 +91,7 @@ jobs:
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: F-Mate-Spark-Toss-TEST-arm64-apk
+          name: F-Mate-CollaboratorUI-Firebase-Toss-TEST-arm64-apk
           path: app/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 7

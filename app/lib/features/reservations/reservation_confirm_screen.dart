@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api.dart';
+import '../../core/config.dart';
+import '../../firebase_exhibition/payment/toss_test_checkout.dart';
 import '../../core/format.dart';
 import '../../core/models.dart';
 import '../../core/services.dart';
@@ -46,6 +48,19 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
           await s.reservations.cancel(r.publicId, '요금 변경으로 취소', uuidV4());
           return;
         }
+      }
+      if (AppConfig.firebaseMode) {
+        if (!mounted) return;
+        // Keep collaborator booking UI; open real Toss TEST widget afterwards.
+        // No server-side payment confirmation or real booking takes place.
+        await Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => TossTestCheckout(
+            venueName: widget.venue.name,
+            amount: r.totalAmount,
+          )),
+          result: true,
+        );
+        return;
       }
       final order = await s.reservations.createOrder(r.publicId, _orderKey);
       if (!mounted) return;
@@ -107,11 +122,17 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
               title: const Text('취소·환불 정책과 이용 규칙을 확인했어요', style: TextStyle(fontSize: 14)),
             ),
             const SizedBox(height: FmSpace.s),
-            const Text('결제하기를 누르면 10분 동안 이 시간이 다른 사람에게 예약되지 않도록 잡아 둬요. '
-                '10분 안에 결제하지 않으면 자동으로 풀려요.',
-                style: TextStyle(fontSize: 13, height: 1.5, color: FmColors.textSecondary)),
+            Text(AppConfig.firebaseMode
+                ? '시연용 가상 풋살장입니다. 예약 시간은 Firestore에 저장되지만 실제 대관이 아닙니다. '
+                  '토스페이먼츠 테스트 결제창에서 인증을 체험하며 실제 금액은 청구되지 않습니다. '
+                  '서버 결제 승인 및 실제 예약 확정은 수행하지 않습니다.'
+                : '결제하기를 누르면 10분 동안 이 시간이 다른 사람에게 예약되지 않도록 잡아 둬요. '
+                  '10분 안에 결제하지 않으면 자동으로 풀려요.',
+                style: const TextStyle(fontSize: 13, height: 1.5, color: FmColors.textSecondary)),
             const SizedBox(height: FmSpace.l),
-            LoadingButton(label: '${Fmt.won(_total)} 결제하기', onPressed: _pay),
+            LoadingButton(label: AppConfig.firebaseMode
+                ? 'TEST 결제 체험 · ${Fmt.won(_total)} (청구 없음)'
+                : '${Fmt.won(_total)} 결제하기', onPressed: _pay),
           ],
         ),
       ),

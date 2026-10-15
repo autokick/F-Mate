@@ -13,6 +13,8 @@ import 'models.dart';
 import 'repos.dart';
 import 'session.dart';
 import 'firebase_session.dart';
+import '../firebase_original_ui/firebase_legacy_api.dart';
+import '../firebase_original_ui/firebase_chat_socket.dart';
 
 /// 앱 전역 서비스. AppScope.of(context) 로 꺼내 쓴다.
 class AppServices {
@@ -29,9 +31,13 @@ class AppServices {
 
   /// adapter / persistentTokens / realtime 는 테스트용 (가짜 서버, 메모리 토큰, 소켓 끄기)
   factory AppServices.create({HttpClientAdapter? adapter, bool persistentTokens = true, bool realtime = true}) {
-    final api = ApiClient(TokenStore(persistent: persistentTokens), adapter: adapter);
+    final api = AppConfig.firebaseMode && adapter == null
+        ? FirebaseLegacyApi(TokenStore(persistent: false))
+        : ApiClient(TokenStore(persistent: persistentTokens), adapter: adapter);
     return AppServices._(api, AppConfig.firebaseMode ? FirebaseSession(api) : Session(api),
-        ChatSocket(api.tokens), realtime && !AppConfig.firebaseMode);
+        AppConfig.firebaseMode && adapter == null
+            ? FirebaseChatSocket(api as FirebaseLegacyApi)
+            : ChatSocket(api.tokens), realtime);
   }
 
   final bool realtime;
@@ -66,9 +72,13 @@ class AppServices {
 
   Future<void> loadFeatures() async {
     if (AppConfig.firebaseMode) {
-      // No REST server exists for the exhibition build. Feature-specific
-      // capabilities are surfaced within FirebaseExhibitionHome.
-      features.value = FeatureConfig.offline();
+      // Preserve collaborator UI. Firebase REST-compat adapter supplies only
+      // supported Spark exhibit operations; no Spring Boot API is contacted.
+      features.value = FeatureConfig(
+        paymentEnabled: true, paymentMode: 'TEST', media: false,
+        video: false, push: false, maps: false, email: true,
+        devMode: true, socialProviders: const [], places: false,
+      );
       serverReachable = true;
       return;
     }
@@ -101,7 +111,10 @@ class AppServices {
 
   /// 로그인 후 호출: 채팅 소켓 연결 + 푸시 등록
   Future<void> onLoggedIn() async {
-    if (AppConfig.firebaseMode) return;
+    if (AppConfig.firebaseMode) {
+      if (realtime) chatSocket.start();
+      return;
+    }
     if (realtime) chatSocket.start();
     await refreshUnread();
     // 좋아요·댓글·팔로우 알림을 몇 초 안에 보여주기 위해 주기적으로 확인 (푸시가 없어도 동작)
@@ -113,7 +126,7 @@ class AppServices {
   /// 로그아웃: 푸시 토큰을 먼저 해제한 뒤(로그인 상태여야 호출 가능) 세션을 지운다
   Future<void> logout() async {
     final token = _pushToken;
-    if (token != null && session.isLoggedIn) {
+    if (!AppConfig.firebaseMode && token != null && session.isLoggedIn) {
       try {
         await notifications.removeDevice(token);
       } catch (_) {

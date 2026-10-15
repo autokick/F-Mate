@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/config.dart';
 import '../../core/models.dart';
 import '../../core/services.dart';
 import '../../core/theme.dart';
@@ -138,9 +139,11 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('비공개 계정'),
-              subtitle: const Text('승인한 팔로워만 내 게시물을 볼 수 있어요'),
+              subtitle: Text(AppConfig.firebaseMode
+                  ? 'Firebase 무료 전시 모드에서는 비공개 계정이 지원되지 않습니다'
+                  : '승인한 팔로워만 내 게시물을 볼 수 있어요'),
               value: _private,
-              onChanged: (v) => setState(() => _private = v),
+              onChanged: AppConfig.firebaseMode ? null : (v) => setState(() => _private = v),
             ),
             const SizedBox(height: FmSpace.l),
             LoadingButton(label: '저장', onPressed: _save),

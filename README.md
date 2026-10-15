@@ -72,3 +72,8 @@ Windows에서 `run.sh`는 Git Bash 또는 WSL에서 실행한다. `docker compos
 ## Firebase Spark 전시용 빌드 (별도 기능 개발 중)
 
 VPS나 학교 현장 서버 PC 없이 Firebase Auth·Firestore로 실시간 계정/시연 예약/텍스트 SNS/1:1 채팅을 테스트하는 **별도 전시용 MVP**는 [Firebase 전시 모드 안내](docs/07-firebase-spark-exhibition.md)를 참고한다. 기존 Spring Boot 서비스를 대체하는 전체 기능 이관은 아직 완료되지 않았다. Firebase 전시 빌드는 `--dart-define=BACKEND=firebase`를 명시하며, 현재 구장은 **가상 시설 예시**이고 실제 결제 기능은 없다.
+
+
+### Firebase Spark 최신 협업 UI 보존 개발 브랜치
+
+feature/firebase-collaborator-ui-20261015 브랜치에서는 협업자 Flutter MainShell의 디자인을 보존하고 Firebase 데이터 서비스를 연결한다. 범위와 미구현 항목은 docs/09-firebase-collaborator-ui.md 문서 참고.
