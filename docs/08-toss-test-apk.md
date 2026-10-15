@@ -45,3 +45,5 @@ The GitHub Actions **android-apk** job assembles an Android ARM64 APK artifact. 
 - Flutter build & widget tests are automated. Physical device/TossPay app return flows require on-device QA; a CI-passing APK alone cannot establish payment usability across every Android handset.
 
 Android AGP 9 currently rejects the published `flutter_inappwebview_android 1.1.3` plugin's obsolete ProGuard default; `scripts/patch_toss_inappwebview.py` applies upstream's corrected default **only in the disposable CI pub cache**. This can be removed after a stable upstream fix.
+
+The Toss-owned `tosspayments_webview_flutter 1.0.6` module additionally compiles at SDK 31, while its AndroidX transitive dependencies require compileSdk >=34. The same ephemeral CI patch uses compileSdk 36 for that plugin; this **does not** raise the application minSdk, still API 24.

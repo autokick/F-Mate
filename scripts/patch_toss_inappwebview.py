@@ -21,3 +21,16 @@ if count not in (1, 2):
     raise SystemExit(f"Unexpected flutter_inappwebview_android build.gradle contents ({count} legacy references)")
 path.write_text(source.replace(old, new))
 print(f"Patched {count} legacy ProGuard references for AGP 9 (ephemeral Flutter dependency cache).")
+
+# Toss's own embedded webview plugin still compiles against Android 31,
+# incompatible with AndroidX libs requiring compileSdk >=34. Bump COMPILE
+# target only, without changing minSdk/targetSdk or payment behavior.
+toss_file = home / "hosted" / "pub.dev" / "tosspayments_webview_flutter-1.0.6" / "android" / "build.gradle"
+if not toss_file.is_file():
+    raise SystemExit(f"Expected Toss embedded WebView v1.0.6 missing: {toss_file}")
+source = toss_file.read_text()
+old = "compileSdkVersion 31"
+if source.count(old) != 1:
+    raise SystemExit("Unexpected Toss webview compileSdkVersion; review dependency before patching")
+toss_file.write_text(source.replace(old, "compileSdkVersion 36"))
+print("Set Toss WebView compileSdkVersion to 36 in ephemeral pub cache.")
