@@ -2,19 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../app.dart';
 import '../../core/config.dart';
 import '../../core/models.dart';
 import '../../core/services.dart';
 import '../../core/theme.dart';
 import '../../shared/async.dart';
+import '../../shared/date_chip.dart';
 import '../../shared/location.dart';
 import '../../shared/widgets.dart';
-import '../operator/operator_home_screen.dart';
-import 'nearby_real_screen.dart';
+import '../reservations/my_reservations_screen.dart';
 import 'venue_detail_screen.dart';
 import 'venue_tile.dart';
-
-enum VenueView { list, map }
 
 /// 자주 쓰는 편의시설 (입점 신청 화면에서도 사용). 코드는 서버 facilities.code 와 같다.
 const Map<String, String> kFacilityFilters = {
@@ -73,7 +72,10 @@ class VenueFilter {
 }
 
 class VenuesScreen extends StatefulWidget {
-  const VenuesScreen({super.key});
+  const VenuesScreen({super.key, this.today});
+
+  /// 테스트에서 날짜 고정용
+  final DateTime? today;
 
   @override
   State<VenuesScreen> createState() => _VenuesScreenState();
@@ -83,7 +85,10 @@ class _VenuesScreenState extends State<VenuesScreen> {
   final _search = TextEditingController();
   String _query = '';
   VenueFilter _filter = const VenueFilter();
-  VenueView _view = VenueView.list;
+  TimeBand _band = TimeBand.all;
+  late final DateTime _today = dateOnly(widget.today ?? DateTime.now());
+  late DateTime _date = _today;
+  bool _map = false;
   Position? _here;
   bool _locating = false;
 
@@ -93,7 +98,10 @@ class _VenuesScreenState extends State<VenuesScreen> {
     super.dispose();
   }
 
-  String get _key => '$_query|${_filter.key}|${_here?.latitude}';
+  String get _key => '$_query|${_filter.key}|${_band.name}|${_date.toIso8601String()}|${_here?.latitude}';
+
+  double get _lat => _here?.latitude ?? AppConfig.defaultLat;
+  double get _lng => _here?.longitude ?? AppConfig.defaultLng;
 
   Future<({List<VenueCard> items, bool hasNext})> _page(AppServices s, int page, {int pageSize = 20}) {
     return s.venues.search(
@@ -102,15 +110,18 @@ class _VenuesScreenState extends State<VenuesScreen> {
       indoor: _filter.indoor,
       size: _filter.size,
       facilities: _filter.facilities.toList(),
-      lat: _here?.latitude,
-      lng: _here?.longitude,
-      radiusKm: _here == null ? null : 10,
+      lat: _lat,
+      lng: _lng,
+      radiusKm: _here == null ? 40.0 : 15.0,
+      date: _date,
+      fromHour: _band.fromHour,
+      toHour: _band.toHour,
       page: page,
       pageSize: pageSize,
     );
   }
 
-  /// 내 주변: 위치정보 이용 동의(약관) → OS 권한 → 현재 위치 (shared/location.dart)
+  /// 내 위치: 위치정보 이용 동의(약관) → OS 권한 → 현재 위치 (shared/location.dart)
   Future<void> _nearMe() async {
     if (_here != null) {
       setState(() => _here = null);
@@ -125,224 +136,252 @@ class _VenuesScreenState extends State<VenuesScreen> {
     }
   }
 
-  void _open(VenueCard v) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => VenueDetailScreen(venueId: v.id)));
+  void _open(VenueCard v, {DateTime? time}) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => VenueDetailScreen(venueId: v.id, initialDate: _date, initialTime: time),
+    ));
   }
 
   Future<void> _openFilter() async {
     final result = await showModalBottomSheet<VenueFilter>(
       context: context,
       isScrollControlled: true,
-      showDragHandle: true,
       useSafeArea: true,
       builder: (_) => VenueFilterSheet(initial: _filter),
     );
     if (result != null && mounted) setState(() => _filter = result);
   }
 
+  void _toggleFacility(String code) {
+    final f = {..._filter.facilities};
+    f.contains(code) ? f.remove(code) : f.add(code);
+    setState(() => _filter = _filter.copyWith(facilities: f));
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
     final mapsOn = AppConfig.mapsEnabled && services.features.value.maps;
-    final f = _filter;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('풋살장'),
-        actions: [
-          IconButton(
-            tooltip: '구장 운영자',
-            icon: const Icon(Icons.storefront_outlined),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OperatorHomeScreen())),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(FmSpace.l, FmSpace.s, FmSpace.s, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    key: const Key('venue_search'),
-                    controller: _search,
-                    textInputAction: TextInputAction.search,
-                    decoration: fmInputDecoration(
-                      label: '구장 이름 또는 주소 검색',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _query.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: '검색어 지우기',
-                              icon: const Icon(Icons.close_rounded),
-                              onPressed: () => setState(() {
-                                _search.clear();
-                                _query = '';
-                              }),
-                            ),
-                    ),
-                    onSubmitted: (v) => setState(() => _query = v.trim()),
-                  ),
-                ),
-                const SizedBox(width: FmSpace.xs),
-                Badge(
-                  isLabelVisible: f.count > 0,
-                  label: Text('${f.count}'),
-                  offset: const Offset(-4, 4),
-                  child: IconButton(
-                    key: const Key('venue_filter_button'),
-                    tooltip: '필터',
-                    iconSize: 26,
-                    style: IconButton.styleFrom(minimumSize: const Size(52, 52)),
-                    onPressed: _openFilter,
-                    icon: const Icon(Icons.tune_rounded),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // 내 주변 + 적용된 필터 (눌러서 하나씩 해제)
-          SizedBox(
-            height: 52,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(FmSpace.l, FmSpace.s, FmSpace.l, 0),
-              children: [
-                _chipPad(FilterChip(
-                  avatar: _locating
-                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.my_location_rounded, size: 16),
-                  label: const Text('내 주변'),
-                  selected: _here != null,
-                  onSelected: (_) => _nearMe(),
-                )),
-                for (final r in f.regions)
-                  _chipPad(InputChip(
-                    label: Text(r),
-                    onDeleted: () => setState(() => _filter = f.copyWith(regions: {...f.regions}..remove(r))),
-                  )),
-                if (f.indoor != null)
-                  _chipPad(InputChip(
-                    label: Text(f.indoor! ? '실내' : '실외'),
-                    onDeleted: () => setState(() => _filter = f.copyWith(indoor: null)),
-                  )),
-                if (f.size != null)
-                  _chipPad(InputChip(
-                    label: Text(f.size!.replaceAll('V', ':')),
-                    onDeleted: () => setState(() => _filter = f.copyWith(size: null)),
-                  )),
-                for (final code in f.facilities)
-                  _chipPad(InputChip(
-                    label: Text(kAllFacilities[code] ?? code),
-                    onDeleted: () => setState(() => _filter = f.copyWith(facilities: {...f.facilities}..remove(code))),
-                  )),
-                if (f.count == 0)
-                  _chipPad(ActionChip(
-                    avatar: const Icon(Icons.tune_rounded, size: 16),
-                    label: const Text('지역·시설로 찾기'),
-                    onPressed: _openFilter,
-                  )),
-              ],
-            ),
-          ),
-          if (services.features.value.places)
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(FmSpace.l, FmSpace.xs, FmSpace.l, 0),
-              child: FmCard(
-                key: const Key('nearby_real_entry'),
-                color: FmColors.brandSoft,
-                padding: const EdgeInsets.symmetric(horizontal: FmSpace.m, vertical: FmSpace.s),
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NearbyRealScreen())),
-                child: const Row(
-                  children: [
-                    Icon(Icons.travel_explore_rounded, color: FmColors.brandDark),
-                    SizedBox(width: FmSpace.s),
-                    Expanded(
-                      child: Text('내 주변 실제 풋살장 보기',
-                          style: TextStyle(fontWeight: FontWeight.w700, color: FmColors.brandDark)),
+              padding: const EdgeInsets.fromLTRB(FmSpace.page, FmSpace.m, FmSpace.s, 0),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('구장 찾기',
+                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                  ),
+                  if (mapsOn)
+                    IconButton(
+                      tooltip: _map ? '목록으로 보기' : '지도로 보기',
+                      icon: Icon(_map ? Icons.view_agenda_outlined : Icons.map_outlined),
+                      onPressed: () => setState(() => _map = !_map),
                     ),
-                    Icon(Icons.chevron_right_rounded, color: FmColors.brandDark),
-                  ],
-                ),
+                  IconButton(
+                    key: const Key('my_reservations_button'),
+                    tooltip: '내 예약',
+                    icon: const Icon(Icons.event_note_outlined),
+                    onPressed: () {
+                      if (!requireLogin(context)) return;
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyReservationsScreen()));
+                    },
+                  ),
+                ],
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(FmSpace.l, FmSpace.s, FmSpace.l, FmSpace.xs),
-            child: SegmentedButton<VenueView>(
-              segments: const [
-                ButtonSegment(value: VenueView.list, label: Text('목록'), icon: Icon(Icons.view_list_rounded)),
-                ButtonSegment(value: VenueView.map, label: Text('지도'), icon: Icon(Icons.map_outlined)),
-              ],
-              selected: {_view},
-              onSelectionChanged: (s) => setState(() => _view = s.first),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(FmSpace.page, FmSpace.s, FmSpace.page, 0),
+              child: TextField(
+                key: const Key('venue_search'),
+                controller: _search,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: '구장 이름이나 동네 검색',
+                  filled: true,
+                  fillColor: FmColors.surfaceMuted,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                  prefixIcon: const Icon(Icons.search_rounded, color: FmColors.textSecondary),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: '검색어 지우기',
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => setState(() {
+                            _search.clear();
+                            _query = '';
+                          }),
+                        ),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(FmRadius.control), borderSide: BorderSide.none),
+                ),
+                onSubmitted: (v) => setState(() => _query = v.trim()),
+              ),
             ),
-          ),
-          Expanded(child: _results(services, mapsOn)),
-        ],
+            Expanded(child: _results(services, mapsOn)),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _chipPad(Widget chip) => Padding(padding: const EdgeInsets.only(right: FmSpace.s), child: chip);
+  Widget _controls() {
+    final f = _filter;
+    Widget pad(Widget chip) => Padding(padding: const EdgeInsets.only(right: FmSpace.s), child: chip);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: FmSpace.l),
+        DateStrip(
+          key: const Key('date_strip'),
+          today: _today,
+          selected: _date,
+          onSelected: (d) => setState(() => _date = d),
+        ),
+        SizedBox(
+          height: 52,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(FmSpace.page, FmSpace.m, FmSpace.page, 0),
+            children: [
+              pad(Badge(
+                isLabelVisible: f.count > 0,
+                label: Text('${f.count}'),
+                backgroundColor: FmColors.brandDark,
+                child: ActionChip(
+                  key: const Key('venue_filter_button'),
+                  tooltip: '필터',
+                  avatar: const Icon(Icons.tune_rounded, size: 18, color: FmColors.textPrimary),
+                  label: const Text('필터'),
+                  onPressed: _openFilter,
+                ),
+              )),
+              pad(FilterChip(
+                avatar: _locating
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(Icons.near_me_outlined, size: 16, color: _here != null ? Colors.white : FmColors.textPrimary),
+                label: const Text('내 위치'),
+                selected: _here != null,
+                onSelected: (_) => _nearMe(),
+              )),
+              for (final r in f.regions)
+                pad(InputChip(
+                  label: Text(r),
+                  selected: true,
+                  deleteIconColor: Colors.white,
+                  onDeleted: () => setState(() => _filter = f.copyWith(regions: {...f.regions}..remove(r))),
+                )),
+              for (final b in TimeBand.values.where((b) => b != TimeBand.all))
+                pad(FilterChip(
+                  label: Text(b.label),
+                  selected: _band == b,
+                  onSelected: (on) => setState(() => _band = on ? b : TimeBand.all),
+                )),
+              pad(FilterChip(
+                label: const Text('실내'),
+                selected: f.indoor == true,
+                onSelected: (on) => setState(() => _filter = f.copyWith(indoor: on ? true : null)),
+              )),
+              pad(FilterChip(
+                label: const Text('실외'),
+                selected: f.indoor == false,
+                onSelected: (on) => setState(() => _filter = f.copyWith(indoor: on ? false : null)),
+              )),
+              for (final code in const ['SHOWER', 'PARKING'])
+                pad(FilterChip(
+                  label: Text(kAllFacilities[code]!),
+                  selected: f.facilities.contains(code),
+                  onSelected: (_) => _toggleFacility(code),
+                )),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(FmSpace.page, FmSpace.l, FmSpace.page, FmSpace.m),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Expanded(
+                child: Text('예약 가능한 구장', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+              Text(
+                '${formatDateKo(_date)} · ${_here == null ? '${AppConfig.defaultAreaName} 기준' : '내 위치 기준'}',
+                key: const Key('selected_date_label'),
+                style: const TextStyle(fontSize: 13, color: FmColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
-  Widget _empty() => EmptyState(
-        icon: Icons.sports_soccer_outlined,
-        title: _query.isEmpty && _here == null && _filter.count == 0 ? '등록된 풋살장이 아직 없어요' : '조건에 맞는 구장이 없어요',
-        message: _filter.count > 0 || _query.isNotEmpty
-            ? '필터나 검색어를 바꿔 보세요.'
-            : '풋살장을 운영하고 계신가요?\n입점하면 F-Mate 에서 바로 예약을 받을 수 있어요.',
-        actionLabel: _filter.count > 0 ? '필터 초기화' : '구장 입점 신청',
-        onAction: _filter.count > 0
-            ? () => setState(() => _filter = const VenueFilter())
-            : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OperatorHomeScreen())),
+  Widget _empty() => Padding(
+        padding: const EdgeInsets.only(top: FmSpace.l),
+        child: EmptyState(
+          icon: Icons.event_busy_outlined,
+          title: _query.isEmpty && _filter.count == 0 && _band == TimeBand.all
+              ? '이 날은 예약 가능한 구장이 없어요'
+              : '조건에 맞는 구장이 없어요',
+          message: '다른 날짜나 조건으로 찾아보세요.',
+          actionLabel: _filter.count > 0 || _band != TimeBand.all ? '조건 초기화' : null,
+          onAction: () => setState(() {
+            _filter = const VenueFilter();
+            _band = TimeBand.all;
+          }),
+        ),
       );
 
   Widget _results(AppServices services, bool mapsOn) {
-    if (_view == VenueView.map && !mapsOn) {
-      return ListView(children: const [
-        EmptyState(
-          icon: Icons.map_outlined,
-          title: '지도는 준비 중이에요',
-          message: '지도 키가 연결되면 구장 위치를 지도에서 볼 수 있어요.\n지금은 목록에서 "지도 앱" 버튼으로 위치를 확인해 주세요.',
-        ),
-      ]);
-    }
-    if (_view == VenueView.map) {
-      // 지도: 조건에 맞는 구장 최대 50곳
-      return AsyncBody<List<VenueCard>>(
-        key: ValueKey('$_key-map'),
-        load: () async => (await _page(services, 0, pageSize: 50)).items,
-        isEmpty: (l) => l.isEmpty,
-        empty: _empty(),
-        builder: (context, venues, reload) => GoogleMap(
-          initialCameraPosition: CameraPosition(
-            target: _here != null
-                ? LatLng(_here!.latitude, _here!.longitude)
-                : LatLng(venues.first.latitude, venues.first.longitude),
-            zoom: 11,
-          ),
-          myLocationEnabled: _here != null,
-          markers: {
-            for (final v in venues)
-              Marker(
-                markerId: MarkerId('${v.id}'),
-                position: LatLng(v.latitude, v.longitude),
-                infoWindow: InfoWindow(title: v.name, snippet: v.roadAddress, onTap: () => _open(v)),
+    if (_map && mapsOn) {
+      return Column(
+        children: [
+          _controls(),
+          Expanded(
+            child: AsyncBody<List<VenueCard>>(
+              key: ValueKey('$_key-map'),
+              load: () async => (await _page(services, 0, pageSize: 50)).items,
+              isEmpty: (l) => l.isEmpty,
+              empty: _empty(),
+              builder: (context, venues, reload) => GoogleMap(
+                initialCameraPosition: CameraPosition(target: LatLng(_lat, _lng), zoom: 12.5),
+                myLocationEnabled: _here != null,
+                markers: {
+                  for (final v in venues)
+                    Marker(
+                      markerId: MarkerId('${v.id}'),
+                      position: LatLng(v.latitude, v.longitude),
+                      infoWindow: InfoWindow(title: v.name, snippet: v.roadAddress, onTap: () => _open(v)),
+                    ),
+                },
               ),
-          },
-        ),
+            ),
+          ),
+        ],
       );
     }
     // 목록: 끝까지 내리면 다음 페이지를 이어서 불러온다
     return PagedList<VenueCard>(
       key: ValueKey('$_key-list'),
+      header: _controls(),
       padding: const EdgeInsets.only(bottom: FmSpace.xl),
       fetch: (cursor) async {
         final page = cursor ?? 0;
         final r = await _page(services, page);
         return (r.items, r.hasNext ? page + 1 : null);
       },
-      itemBuilder: (context, v, i) => VenueTile(venue: v, onTap: () => _open(v)),
+      itemBuilder: (context, v, i) => VenueTile(
+        venue: v,
+        date: _date,
+        fromHour: _band.fromHour,
+        toHour: _band.toHour,
+        onTap: () => _open(v),
+        onTimeTap: (t) => _open(v, time: t),
+      ),
       empty: _empty(),
     );
   }

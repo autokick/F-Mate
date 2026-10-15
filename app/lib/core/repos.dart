@@ -211,6 +211,10 @@ class SocialRepo {
   Future<CursorPage<Post>> shorts(int? cursor) async =>
       postPage(await api.get('/api/v1/shorts', query: {'cursor': cursor, 'limit': 10}));
 
+  /// 이 구장을 태그한 공개 게시물 (구장 상세의 "이 구장에서 올라온 영상")
+  Future<CursorPage<Post>> venuePosts(int venueId, {int? cursor, int limit = 12}) async =>
+      postPage(await api.get('/api/v1/feed', query: {'type': 'venue', 'venueId': venueId, 'cursor': cursor, 'limit': limit}));
+
   Future<CursorPage<Post>> userPosts(int userId, {bool highlights = false, int? cursor}) async =>
       postPage(await api.get('/api/v1/users/$userId/posts',
           query: {'tab': highlights ? 'highlights' : 'posts', 'cursor': cursor, 'limit': 24}));

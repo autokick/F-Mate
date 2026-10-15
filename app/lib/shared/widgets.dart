@@ -25,7 +25,7 @@ class FmCard extends StatelessWidget {
       color: color,
       shape: RoundedRectangleBorder(
         borderRadius: radius,
-        side: const BorderSide(color: FmColors.border),
+        side: const BorderSide(color: FmColors.divider),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -57,8 +57,8 @@ class EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return _StateLayout(
       icon: icon,
-      iconColor: FmColors.brandDark,
-      iconBackground: FmColors.brandSoft,
+      iconColor: FmColors.textTertiary,
+      iconBackground: FmColors.surfaceMuted,
       title: title,
       message: message,
       action: actionLabel == null
@@ -147,10 +147,10 @@ class _StateLayout extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 64,
-            height: 64,
+            width: 72,
+            height: 72,
             decoration: BoxDecoration(color: iconBackground, shape: BoxShape.circle),
-            child: Icon(icon, size: 32, color: iconColor),
+            child: Icon(icon, size: 34, color: iconColor),
           ),
           const SizedBox(height: FmSpace.l),
           Text(
@@ -158,7 +158,7 @@ class _StateLayout extends StatelessWidget {
             textAlign: TextAlign.center,
             style: const TextStyle(
               fontSize: 17,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               color: FmColors.textPrimary,
             ),
           ),
@@ -190,7 +190,7 @@ class SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(FmSpace.l, FmSpace.xl, FmSpace.l, FmSpace.s),
+      padding: const EdgeInsets.fromLTRB(FmSpace.page, FmSpace.xl, FmSpace.page, FmSpace.m),
       child: Row(
         children: [
           Expanded(
@@ -199,8 +199,9 @@ class SectionTitle extends StatelessWidget {
               child: Text(
                 text,
                 style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
                   color: FmColors.textPrimary,
                 ),
               ),
@@ -249,7 +250,7 @@ class NotConnectedBanner extends StatelessWidget {
 void showFmSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message), behavior: SnackBarBehavior.floating));
+    ..showSnackBar(SnackBar(content: Text(message)));
 }
 
 /// 프로필 사진 (없으면 이니셜)
@@ -272,10 +273,10 @@ class AppAvatar extends StatelessWidget {
           height: size,
           child: url == null
               ? Container(
-                  color: FmColors.brandSoft,
+                  color: const Color(0xFFCFE9DC),
                   alignment: Alignment.center,
                   child: Text(initial,
-                      style: TextStyle(fontSize: size * 0.42, fontWeight: FontWeight.w700, color: FmColors.brandDark)),
+                      style: TextStyle(fontSize: size * 0.4, fontWeight: FontWeight.w800, color: const Color(0xFF0B5D3B))),
                 )
               : Image.network(url!, fit: BoxFit.cover,
                   errorBuilder: (context, error, stack) => Container(color: FmColors.surfaceMuted)),

@@ -40,7 +40,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info_outline_rounded),
             title: const Text('앱 정보'),
-            subtitle: Text('버전 ${AppConfig.appVersion} · ${AppConfig.env}${s.features.value.isTestPayment ? ' · 테스트 결제' : ''}'),
+            subtitle: Text('버전 ${AppConfig.appVersion}'),
           ),
           const SectionTitle('기타'),
           ListTile(
@@ -120,7 +120,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           if (!s.features.value.push || !s.pushReady)
             const Padding(
               padding: EdgeInsets.all(FmSpace.l),
-              child: NotConnectedBanner(message: '푸시 알림은 준비 중이에요. 알림은 앱 안의 알림 목록에서 볼 수 있어요.'),
+              child: NotConnectedBanner(message: '새 알림은 앱을 쓰는 동안 화면 아래와 알림 목록에 바로 표시돼요.'),
             ),
           for (final e in _labels.entries)
             SwitchListTile(

@@ -2,7 +2,7 @@
 #
 # What it does:
 #   1. flutter create  (makes the android/ folder for THIS PC's Flutter version)
-#   2. copies lib/, test/, pubspec.yaml from this folder
+#   2. copies lib/, test/, assets/ (fonts), pubspec.yaml from this folder
 #   3. applies the Android settings from ANDROID_SETUP.md steps 1-3
 #        - minSdk 24
 #        - permissions, app name "F-Mate", payment app <queries>
@@ -14,7 +14,7 @@
 # Options:
 #   -Target C:\dev\fmate_app        where to create the project (default)
 #   -Flutter C:\src\flutter\bin\flutter.bat
-#   -Force                          overwrite lib/test/pubspec in an existing project
+#   -Force                          overwrite lib/test/assets/pubspec in an existing project
 
 param(
     [string]$Target = "C:\dev\fmate_app",
@@ -54,13 +54,13 @@ if (-not (Test-Path (Join-Path $Target "android"))) {
     & $fl create --org app.fmate --project-name fmate_app --platforms android $Target
     if ($LASTEXITCODE -ne 0) { throw "flutter create failed" }
 } elseif (-not $Force) {
-    Write-Host "Project already exists at $Target. Code is NOT overwritten (use -Force to overwrite lib/test/pubspec). Android settings are still checked."
+    Write-Host "Project already exists at $Target. Code is NOT overwritten (use -Force to overwrite lib/test/assets/pubspec). Android settings are still checked."
 }
 
 # 2. copy app code
 if ($Force -or -not (Test-Path (Join-Path $Target "lib\core"))) {
-    Write-Host "Copying lib/, test/, pubspec.yaml ..."
-    foreach ($d in @("lib", "test")) {
+    Write-Host "Copying lib/, test/, assets/, pubspec.yaml ..."
+    foreach ($d in @("lib", "test", "assets")) {
         $dst = Join-Path $Target $d
         if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }
         Copy-Item -Recurse (Join-Path $Here $d) $dst

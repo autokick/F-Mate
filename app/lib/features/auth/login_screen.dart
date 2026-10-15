@@ -55,7 +55,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final services = AppScope.of(context);
-    final providers = services.features.value.socialProviders;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -122,13 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: FmSpace.l),
                       // 소셜 로그인: 서버 검증은 구현되어 있고, 앱 SDK 연결은 각 공급자 키 발급 후 진행 (docs/03)
-                      Text(
-                        providers.isEmpty ? '카카오·구글·애플 로그인은 준비 중이에요' : '소셜 로그인은 앱 SDK 연결 후 사용할 수 있어요',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 13, color: FmColors.textSecondary),
-                      ),
                       const SizedBox(height: FmSpace.xl),
                       OutlinedButton(
                         key: const Key('browse_button'),

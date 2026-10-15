@@ -1,18 +1,24 @@
 r"""
-공공데이터(국민체육진흥공단 '전국체육시설 정보' API)에서 실제 풋살장을 골라
-F-Mate DB 에 넣을 SQL 파일(public_futsal.sql)을 만든다.
+공공데이터(국민체육진흥공단 '전국체육시설 정보' API)에서 정상 운영 중인 풋살장을 모아,
+기준점(기본: 서울 중랑구청)에서 가장 가까운 N곳(기본 10곳)만 F-Mate DB 에 넣을 SQL 파일(public_futsal.sql)을 만든다.
 
 - 실제 시설의 이름·주소·위치·실내외는 공공데이터 그대로 쓴다.
-- 코트·운영시간·가격은 전시 시연용 예시이며, 구장 설명에 그 사실을 적는다 (실제 예약 아님).
+- 코트 1면 · 운영시간 06~24시 · 기본 요금으로 시작하고, 사진·편의시설·요금·운영시간은
+  구장 운영자 계정(owner@fmate.demo)으로 앱의 "구장 관리"에서 실제 정보로 고친다.
+- 다시 실행해도 이미 들어 있는 같은 구장(이름·위치가 같으면)은 그대로 두므로, 올린 사진·수정한 정보가 지워지지 않는다.
+  목록에서 빠진 구장만 지운다 (그 구장의 예약·결제 기록 포함).
 - 표준 라이브러리만 사용 (설치할 것 없음).
 
 실행 (C:\dev\fmate 에서, PowerShell):
   docker run --rm -e DATA_GO_KR_KEY="인증키" -v "C:\dev\fmate\backend\demo:/work" python:3.12-slim python -u /work/import_public_futsal.py
 
-특정 지역만 넣기 (쉼표 구분, 시도 이름 그대로):
-  ... -e REGIONS="서울특별시,경기도" ...
+선택 옵션 (-e 로 추가):
+  LIMIT=10                       넣을 구장 수
+  CENTER_LAT=37.6066 CENTER_LNG=127.0927   기준점 (기본: 중랑구청)
+  REGIONS="서울특별시,경기도"       이 시도에서만 고르기
 """
 import json
+import math
 import os
 import sys
 import time
@@ -32,22 +38,31 @@ SIDO_CODES = {
     "제주특별자치도": "50",
 }
 
-DESCRIPTION = ("공공데이터(국민체육진흥공단 전국체육시설 정보) 기준의 실제 시설이에요. "
-               "아직 F-Mate 제휴 구장이 아니며, 예약 시간표와 가격은 전시 시연용 예시라 실제로 예약되지 않아요.")
-# 이전에 넣은 공공데이터 구장(과 그 구장에서 생긴 시연 예약·결제)을 지운다
-_PV = "SELECT id FROM futsal_venues WHERE data_source = 'PARTNER_API'"
-_PR = f"SELECT id FROM reservations WHERE venue_id IN ({_PV})"
-_PP = f"SELECT id FROM payments WHERE reservation_id IN ({_PR})"
-CLEANUP = [
-    f"DELETE FROM refunds WHERE payment_id IN ({_PP});",
-    f"DELETE FROM payment_audit_logs WHERE payment_id IN ({_PP});",
-    f"DELETE FROM payments WHERE reservation_id IN ({_PR});",
-    f"DELETE FROM reservation_status_history WHERE reservation_id IN ({_PR});",
-    f"DELETE FROM reservations WHERE venue_id IN ({_PV});",
-    "DELETE FROM futsal_venues WHERE data_source = 'PARTNER_API';",
-]
+DEFAULT_CENTER = (37.6066, 127.0927)  # 서울 중랑구청
+OWNER_EMAIL = "owner@fmate.demo"       # 있으면 이 계정이 구장 운영자가 된다 (demo_seed.sql)
 
-RULES = "시연용 안내: 실제 이용 규칙·가격은 시설에 직접 문의해 주세요."
+
+def cleanup_sql(keep_condition: str) -> list:
+    """목록에서 빠진 공공데이터 구장(과 그 구장의 예약·결제)을 지운다."""
+    pv = f"SELECT id FROM futsal_venues WHERE data_source = 'PARTNER_API' AND NOT ({keep_condition})"
+    pr = f"SELECT id FROM reservations WHERE venue_id IN ({pv})"
+    pp = f"SELECT id FROM payments WHERE reservation_id IN ({pr})"
+    return [
+        f"DELETE FROM refunds WHERE payment_id IN ({pp});",
+        f"DELETE FROM payment_audit_logs WHERE payment_id IN ({pp});",
+        f"DELETE FROM payments WHERE reservation_id IN ({pr});",
+        f"DELETE FROM reservation_status_history WHERE reservation_id IN ({pr});",
+        f"DELETE FROM reservations WHERE venue_id IN ({pv});",
+        f"DELETE FROM futsal_venues WHERE id IN ({pv});",
+    ]
+
+
+def km(a_lat, a_lng, b_lat, b_lng) -> float:
+    r = 6371.0
+    p1, p2 = math.radians(a_lat), math.radians(b_lat)
+    dp, dl = p2 - p1, math.radians(b_lng - a_lng)
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(h))
 
 
 def build_url(key: str, page: int) -> str:
@@ -143,6 +158,9 @@ def main():
     if not key:
         raise SystemExit('DATA_GO_KR_KEY 가 비어 있어요. -e DATA_GO_KR_KEY="인증키" 를 넣어 주세요.')
     regions = {r.strip() for r in os.environ.get("REGIONS", "").split(",") if r.strip()}
+    limit = int(os.environ.get("LIMIT", "10"))
+    c_lat = float(os.environ.get("CENTER_LAT", DEFAULT_CENTER[0]))
+    c_lng = float(os.environ.get("CENTER_LNG", DEFAULT_CENTER[1]))
 
     first = fetch(key, 1)
     total = int(first.get("totalCount") or 0)
@@ -178,14 +196,34 @@ def main():
     if not found:
         raise SystemExit("넣을 풋살장이 없어요.")
 
+    # 기준점에서 가까운 순으로 limit 곳만
+    ranked = sorted(found.values(),
+                    key=lambda it: km(c_lat, c_lng, to_float(it.get("faci_lat")), to_float(it.get("faci_lot"))))
+    chosen = ranked[:limit]
+    print(f"기준점({c_lat}, {c_lng})에서 가까운 {len(chosen)}곳:")
+    for i, it in enumerate(chosen, 1):
+        d = km(c_lat, c_lng, to_float(it.get("faci_lat")), to_float(it.get("faci_lot")))
+        print(f"  {i:2d}. {(it.get('faci_nm') or '').strip()}  ({d:.1f}km)  {resolve_address(it)[0]}")
+
+    def same(it) -> str:
+        return (f"(name = {sql_str((it.get('faci_nm') or '')[:100])} "
+                f"AND abs(latitude - {to_float(it.get('faci_lat'))}) < 0.000001 "
+                f"AND abs(longitude - {to_float(it.get('faci_lot'))}) < 0.000001)")
+
+    keep = " OR ".join(same(it) for it in chosen)
     by_region = {}
+    old = "data_source = 'PARTNER_API' AND description LIKE '%전시 시연용%'"
     lines = [
-        "-- 공공데이터(국민체육진흥공단 전국체육시설 정보)로 만든 실제 풋살장 목록",
-        "-- 코트·운영시간·가격은 전시 시연용 예시. 다시 만들면 이전에 넣은 공공데이터 구장은 지워지고 새로 들어간다.",
+        "-- 공공데이터(국민체육진흥공단 전국체육시설 정보)로 고른 실제 풋살장 (기준점에서 가까운 순)",
+        "-- 이미 있는 같은 구장은 그대로 두고(사진·수정 정보 유지), 목록에서 빠진 공공데이터 구장만 지운다.",
         "BEGIN;",
-    ] + CLEANUP + [
+    ] + cleanup_sql(keep) + [
+        # 예전 버전이 넣은 시연용 안내 문구·임의 편의시설은 지운다 (운영자가 실제 정보로 다시 채운다)
+        f"DELETE FROM venue_facilities WHERE venue_id IN (SELECT id FROM futsal_venues WHERE {old});",
+        "UPDATE futsal_venues SET rules = NULL WHERE data_source = 'PARTNER_API' AND rules LIKE '시연용 안내%';",
+        f"UPDATE futsal_venues SET description = NULL WHERE {old};",
     ]
-    for it in found.values():
+    for it in chosen:
         sido = (it.get("cp_nm") or it.get("addr_ctpv_nm") or "").strip()
         code = region_code(sido, it) + "000"
         by_region[sido or "기타"] = by_region.get(sido or "기타", 0) + 1
@@ -196,12 +234,15 @@ def main():
         phone = it.get("faci_tel_no") or it.get("faci_telno")
         lines.append(
             "WITH v AS (INSERT INTO futsal_venues (name, description, road_address, detail_address, region_code, "
-            "latitude, longitude, phone, rules, verification_status, verified_at, data_source) VALUES ("
-            f"{sql_str((it.get('faci_nm') or '')[:100])}, {sql_str(DESCRIPTION)}, {sql_str(addr[:200])}, "
+            "latitude, longitude, phone, rules, verification_status, verified_at, data_source) SELECT "
+            f"{sql_str((it.get('faci_nm') or '')[:100])}, NULL, {sql_str(addr[:200])}, "
             f"{sql_str((detail or '')[:100])}, '{code}', {to_float(it.get('faci_lat'))}, {to_float(it.get('faci_lot'))}, "
-            f"{sql_str((phone or '')[:20])}, {sql_str(RULES)}, 'VERIFIED', now(), 'PARTNER_API') RETURNING id), "
+            f"{sql_str((phone or '')[:20])}, NULL, 'VERIFIED', now(), 'PARTNER_API' "
+            f"WHERE NOT EXISTS (SELECT 1 FROM futsal_venues WHERE data_source = 'PARTNER_API' AND {same(it)}) RETURNING id), "
+            "o AS (INSERT INTO venue_operators (venue_id, user_id, role) "
+            f"SELECT v.id, u.id, 'OWNER' FROM v JOIN users u ON u.email = '{OWNER_EMAIL}' RETURNING venue_id), "
             "c AS (INSERT INTO courts (venue_id, name, is_indoor, surface, size_class) "
-            f"SELECT id, '코트 1', {indoor}, 'ARTIFICIAL_TURF', '5V5' FROM v RETURNING id) "
+            f"SELECT id, 'A코트', {indoor}, 'ARTIFICIAL_TURF', '5V5' FROM v RETURNING id) "
             "INSERT INTO operating_hours (court_id, day_of_week, open_minute, close_minute, slot_minutes, price_per_slot) "
             f"SELECT c.id, d, 360, 1080, 60, {day_price} FROM c, generate_series(0, 6) d "
             f"UNION ALL SELECT c.id, d, 1080, 1440, 60, {night_price} FROM c, generate_series(0, 6) d;"
@@ -210,16 +251,18 @@ def main():
     lines.append(
         "SELECT count(*) AS courts, sum(generate_time_slots(c.id, (now() AT TIME ZONE 'Asia/Seoul')::date, 14)) AS slots "
         "FROM courts c JOIN futsal_venues v ON v.id = c.venue_id WHERE v.data_source = 'PARTNER_API';")
+    # 운영자 계정이 나중에 만들어졌으면 다시 실행할 때 연결해 준다
+    lines.append(
+        "INSERT INTO venue_operators (venue_id, user_id, role) "
+        f"SELECT v.id, u.id, 'OWNER' FROM futsal_venues v JOIN users u ON u.email = '{OWNER_EMAIL}' "
+        "WHERE v.data_source = 'PARTNER_API' ON CONFLICT DO NOTHING;")
+    lines.append("SELECT id, name, road_address FROM futsal_venues WHERE data_source = 'PARTNER_API' ORDER BY id;")
     lines.append("COMMIT;")
-    # 시연용 편의시설 (public_futsal_facilities.sql 과 같은 내용)
-    fac = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public_futsal_facilities.sql")
-    if os.path.exists(fac):
-        with open(fac, encoding="utf-8") as f:
-            lines.append(f.read())
 
     with open(OUT, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     print("지역별:", ", ".join(f"{k} {v}" for k, v in sorted(by_region.items(), key=lambda x: -x[1])))
+    print("다음: 이 파일을 DB 에 넣은 뒤, owner@fmate.demo 로 로그인 → 마이 → 구장 관리에서 사진·편의시설·요금을 실제 정보로 바꿔 주세요.")
     if UNKNOWN_SIDO:
         print("주의: 지역 코드를 모르는 시도 →", ", ".join(sorted(UNKNOWN_SIDO)), "(앱의 '전체'에서만 보여요)")
     print(f"완료: {OUT} 를 만들었어요. 이제 DB 에 넣으면 돼요.")
