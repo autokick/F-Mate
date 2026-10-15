@@ -10,6 +10,9 @@ import 'features/auth/verify_email_screen.dart';
 import 'features/shell/main_shell.dart';
 import 'shared/widgets.dart';
 
+/// 앱 전체 화면 이동 (초기화면 버튼에서 사용)
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 class FMateApp extends StatefulWidget {
   const FMateApp({super.key, this.services});
 
@@ -30,7 +33,9 @@ class _FMateAppState extends State<FMateApp> {
       child: MaterialApp(
         title: 'F-Mate',
         debugShowCheckedModeBanner: false,
+        navigatorKey: rootNavigatorKey,
         theme: buildFmTheme(),
+        builder: (context, child) => HomeButtonOverlay(child: child ?? const SizedBox.shrink()),
         home: const AuthGate(),
       ),
     );
@@ -164,4 +169,64 @@ Future<bool> requireVerified(BuildContext context) async {
   if (services.session.me?.emailVerified == true) return true;
   final ok = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const VerifyEmailScreen()));
   return ok == true;
+}
+
+/// 어느 화면에서든 오른쪽 위에 보이는 '초기화면' 버튼.
+/// 누르면 열려 있던 화면·창을 모두 닫고 홈(첫 탭)으로 돌아간다. 로그인은 그대로 유지.
+class HomeButtonOverlay extends StatelessWidget {
+  const HomeButtonOverlay({super.key, required this.child});
+
+  final Widget child;
+
+  void _goHome(BuildContext context) {
+    rootNavigatorKey.currentState?.popUntil((route) => route.isFirst);
+    AppScope.read(context).goHome.value++;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!AppConfig.homeButton) return child;
+    // 상태 표시줄(시계·배터리) 높이 안에 두어 앱 화면의 버튼을 가리지 않게 한다
+    final top = MediaQuery.paddingOf(context).top;
+    const h = 26.0;
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          top: top >= h ? (top - h) / 2 : 4,
+          right: 10,
+          child: Semantics(
+            button: true,
+            label: '초기화면으로 돌아가기',
+            excludeSemantics: true,
+            child: Material(
+              key: const Key('home_reset_button'),
+              color: const Color(0xD90F1419),
+              borderRadius: BorderRadius.circular(999),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => _goHome(context),
+                child: const SizedBox(
+                  height: h,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.home_rounded, size: 15, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text('초기화면',
+                            style: TextStyle(
+                                fontFamily: kFmFont, fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

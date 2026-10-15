@@ -53,9 +53,10 @@ public class SocialController {
     @GetMapping("/feed")
     public PostService.FeedPage feed(@AuthenticationPrincipal AuthUser me,
                                      @RequestParam(defaultValue = "latest") String type,
+                                     @RequestParam(required = false) Long venueId,
                                      @RequestParam(required = false) Long cursor,
                                      @RequestParam(defaultValue = "20") int limit) {
-        return posts.feed(me.id(), type, cursor, limit);
+        return posts.feed(me.id(), type, venueId, cursor, limit);
     }
 
     @GetMapping("/shorts")

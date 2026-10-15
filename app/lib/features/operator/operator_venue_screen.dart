@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/format.dart';
 import '../../core/models.dart';
@@ -8,6 +11,7 @@ import '../../shared/async.dart';
 import '../../shared/widgets.dart';
 import '../booking/booking_screen.dart';
 import '../reservations/reservation_result_screen.dart';
+import '../venues/venues_screen.dart' show kAllFacilities;
 import 'operating_hours_screen.dart';
 import 'operator_home_screen.dart';
 import 'slot_manage_screen.dart';
@@ -318,6 +322,51 @@ class _InfoTabState extends State<_InfoTab> {
   late final _phone = TextEditingController(text: widget.venue.phone ?? '');
   late final _rules = TextEditingController(text: widget.venue.rules ?? '');
   late List<PolicyRule> _policy = List.of(widget.venue.cancelPolicy);
+  late final List<String> _photoKeys = [
+    for (final p in widget.venue.photos)
+      if (p.objectKey != null) p.objectKey!,
+  ];
+  late final Map<String, String?> _photoUrls = {
+    for (final p in widget.venue.photos)
+      if (p.objectKey != null) p.objectKey!: p.url,
+  };
+  final List<XFile> _newPhotos = [];
+  late final Set<String> _facilities = {for (final f in widget.venue.facilities) f.code};
+  double? _uploading;
+
+  @override
+  void didUpdateWidget(covariant _InfoTab old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.venue, widget.venue)) {
+      // 저장 후 다시 불러온 구장 정보로 사진 목록을 맞춘다
+      _photoKeys
+        ..clear()
+        ..addAll([
+          for (final p in widget.venue.photos)
+            if (p.objectKey != null) p.objectKey!,
+        ]);
+      _photoUrls
+        ..clear()
+        ..addAll({
+          for (final p in widget.venue.photos)
+            if (p.objectKey != null) p.objectKey!: p.url,
+        });
+    }
+  }
+
+  Future<void> _pickPhotos() async {
+    try {
+      final picked = await ImagePicker().pickMultiImage(imageQuality: 85, maxWidth: 2048, maxHeight: 2048);
+      if (picked.isEmpty) return;
+      setState(() {
+        _newPhotos.addAll(picked);
+        final room = 20 - _photoKeys.length;
+        if (_newPhotos.length > room) _newPhotos.removeRange(room.clamp(0, _newPhotos.length), _newPhotos.length);
+      });
+    } catch (_) {
+      if (mounted) showFmSnack(context, '사진을 불러오지 못했어요. 사진 접근 권한을 확인해 주세요');
+    }
+  }
 
   @override
   void dispose() {
@@ -328,13 +377,33 @@ class _InfoTabState extends State<_InfoTab> {
   }
 
   Future<void> _save() async {
+    final s = AppScope.read(context);
     try {
-      await AppScope.read(context).operator.updateVenue(widget.venue.id, {
+      var keys = List.of(_photoKeys);
+      if (_newPhotos.isNotEmpty) {
+        setState(() => _uploading = 0);
+        final uploaded = await s.media.uploadFiles('VENUE_PHOTO', _newPhotos, onProgress: (p) {
+          if (mounted) setState(() => _uploading = p);
+        });
+        keys = [...keys, ...uploaded];
+      }
+      _photoKeys
+        ..clear()
+        ..addAll(keys);
+      await s.operator.updateVenue(widget.venue.id, {
         'description': _desc.text,
         'phone': _phone.text,
         'rules': _rules.text,
         'cancelPolicy': [for (final r in _policy) {'hoursBefore': r.hoursBefore, 'refundPercent': r.refundPercent}],
+        'facilities': _facilities.toList(),
+        'photoKeys': keys,
       });
+      if (mounted) {
+        setState(() {
+          _uploading = null;
+          _newPhotos.clear();
+        });
+      }
       await widget.onSaved();
       if (mounted) showFmSnack(context, '저장했어요');
     } catch (e) {
@@ -347,6 +416,64 @@ class _InfoTabState extends State<_InfoTab> {
     return ListView(
       padding: const EdgeInsets.all(FmSpace.l),
       children: [
+        Row(children: [
+          Text('사진 ${_photoKeys.length + _newPhotos.length}/20',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          const Spacer(),
+          TextButton.icon(
+            onPressed: _photoKeys.length + _newPhotos.length >= 20 ? null : _pickPhotos,
+            icon: const Icon(Icons.add_photo_alternate_outlined, size: 20),
+            label: const Text('사진 추가'),
+          ),
+        ]),
+        const Text('첫 번째 사진이 목록의 대표 사진이 돼요. 길게 눌러 맨 앞으로 옮길 수 있어요.',
+            style: TextStyle(fontSize: 12, color: FmColors.textSecondary)),
+        const SizedBox(height: FmSpace.s),
+        SizedBox(
+          height: 96,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (var i = 0; i < _photoKeys.length; i++)
+                _PhotoBox(
+                  first: i == 0,
+                  onRemove: () => setState(() => _photoKeys.removeAt(i)),
+                  onMakeFirst: () => setState(() => _photoKeys.insert(0, _photoKeys.removeAt(i))),
+                  child: _photoUrls[_photoKeys[i]] == null
+                      ? Container(color: FmColors.photoPlaceholder)
+                      : Image.network(_photoUrls[_photoKeys[i]]!, fit: BoxFit.cover,
+                          errorBuilder: (context, e, st) => Container(color: FmColors.photoPlaceholder)),
+                ),
+              for (var i = 0; i < _newPhotos.length; i++)
+                _PhotoBox(
+                  first: _photoKeys.isEmpty && i == 0,
+                  isNew: true,
+                  onRemove: () => setState(() => _newPhotos.removeAt(i)),
+                  child: Image.file(File(_newPhotos[i].path), fit: BoxFit.cover),
+                ),
+            ],
+          ),
+        ),
+        if (_uploading != null) ...[
+          const SizedBox(height: FmSpace.s),
+          LinearProgressIndicator(value: _uploading),
+        ],
+        const SizedBox(height: FmSpace.l),
+        const Text('편의시설', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        const SizedBox(height: FmSpace.s),
+        Wrap(
+          spacing: FmSpace.s,
+          runSpacing: FmSpace.s,
+          children: [
+            for (final e in kAllFacilities.entries)
+              FilterChip(
+                label: Text(e.value),
+                selected: _facilities.contains(e.key),
+                onSelected: (on) => setState(() => on ? _facilities.add(e.key) : _facilities.remove(e.key)),
+              ),
+          ],
+        ),
+        const SizedBox(height: FmSpace.xl),
         TextField(controller: _desc, maxLines: 4, maxLength: 1000, decoration: fmInputDecoration(label: '구장 소개')),
         TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: fmInputDecoration(label: '전화번호')),
         const SizedBox(height: FmSpace.m),
@@ -390,6 +517,64 @@ class _InfoTabState extends State<_InfoTab> {
         const SizedBox(height: FmSpace.l),
         LoadingButton(label: '저장', onPressed: _save),
       ],
+    );
+  }
+}
+
+class _PhotoBox extends StatelessWidget {
+  const _PhotoBox({required this.child, required this.onRemove, this.onMakeFirst, this.first = false, this.isNew = false});
+
+  final Widget child;
+  final VoidCallback onRemove;
+  final VoidCallback? onMakeFirst;
+  final bool first;
+  final bool isNew;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: FmSpace.s),
+      child: GestureDetector(
+        onLongPress: onMakeFirst,
+        child: SizedBox(
+          width: 96,
+          height: 96,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ClipRRect(borderRadius: BorderRadius.circular(FmRadius.control), child: child),
+              if (first || isNew)
+                Positioned(
+                  left: 4,
+                  bottom: 4,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)),
+                    child: Text(first ? '대표' : '새 사진',
+                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              Positioned(
+                right: 2,
+                top: 2,
+                child: Semantics(
+                  button: true,
+                  label: '사진 빼기',
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    onTap: onRemove,
+                    child: const CircleAvatar(
+                      radius: 12,
+                      backgroundColor: Colors.black54,
+                      child: Icon(Icons.close_rounded, size: 16, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

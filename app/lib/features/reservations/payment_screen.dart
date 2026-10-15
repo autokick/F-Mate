@@ -141,7 +141,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   Widget build(BuildContext context) {
     final r = _remaining;
-    final test = widget.order.mode != 'LIVE';
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(tooltip: '닫기', icon: const Icon(Icons.close_rounded), onPressed: _close),
@@ -158,12 +157,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
             ),
         ],
-        bottom: test
-            ? const PreferredSize(
-                preferredSize: Size.fromHeight(32),
-                child: Padding(padding: EdgeInsets.only(bottom: FmSpace.s), child: TestModeBadge()),
-              )
-            : null,
       ),
       body: Stack(
         children: [

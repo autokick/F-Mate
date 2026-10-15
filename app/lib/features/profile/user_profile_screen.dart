@@ -99,7 +99,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final services = AppScope.of(context);
     final isMe = services.session.me?.id == widget.userId;
     return Scaffold(
-      appBar: AppBar(title: const Text('프로필')),
+      appBar: AppBar(title: const Text('프로필'), centerTitle: true),
       body: !services.session.isLoggedIn
           ? EmptyState(
               icon: Icons.person_outline_rounded,
@@ -130,20 +130,30 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     ),
                     if (!isMe)
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: FmSpace.l),
+                        padding: const EdgeInsets.symmetric(horizontal: FmSpace.page),
                         child: Row(children: [
                           Expanded(
                             child: p.followStatus == 'NONE'
                                 ? FilledButton(
+                                    key: const Key('follow_button'),
+                                    style: FilledButton.styleFrom(
+                                        minimumSize: const Size(64, 42),
+                                        textStyle: const TextStyle(fontFamily: kFmFont, fontSize: 15, fontWeight: FontWeight.w800),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                                     onPressed: p.blockedByMe ? null : () => _follow(p),
                                     child: Text(p.followsMe ? '맞팔로우' : '팔로우'))
                                 : OutlinedButton(
+                                    key: const Key('follow_button'),
+                                    style: OutlinedButton.styleFrom(minimumSize: const Size(64, 42)),
                                     onPressed: () => _follow(p),
                                     child: Text(p.followStatus == 'PENDING' ? '요청됨' : '팔로잉')),
                           ),
                           const SizedBox(width: FmSpace.s),
                           Expanded(
-                            child: OutlinedButton(onPressed: p.blockedByMe ? null : () => _message(p), child: const Text('메시지')),
+                            child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(minimumSize: const Size(64, 42)),
+                                onPressed: p.blockedByMe ? null : () => _message(p),
+                                child: const Text('메시지')),
                           ),
                           IconButton(tooltip: '더보기', icon: const Icon(Icons.more_horiz_rounded), onPressed: () => _more(p)),
                         ]),
@@ -159,7 +169,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         initialIndex: _tab,
                         child: TabBar(
                           onTap: (i) => setState(() => _tab = i),
-                          tabs: const [Tab(text: '게시물'), Tab(text: '하이라이트')],
+                          tabs: const [
+                            Tab(icon: Icon(Icons.grid_on_rounded, semanticLabel: '게시물')),
+                            Tab(icon: Icon(Icons.smart_display_outlined, semanticLabel: '하이라이트')),
+                          ],
                         ),
                       ),
                       PostGrid(key: ValueKey('u${p.id}-$_tab'), userId: p.id, highlights: _tab == 1),
@@ -172,7 +185,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 }
 
-/// 프로필 상단 (사진·닉네임·포지션·소개·카운트)
+/// 프로필 상단 (사진·카운트·닉네임·포지션·소개)
 class ProfileHeader extends StatelessWidget {
   const ProfileHeader({
     super.key,
@@ -183,6 +196,7 @@ class ProfileHeader extends StatelessWidget {
     required this.counts,
     this.onFollowers,
     this.onFollowing,
+    this.regionLabel,
   });
 
   final String name;
@@ -192,44 +206,51 @@ class ProfileHeader extends StatelessWidget {
   final Counts counts;
   final VoidCallback? onFollowers;
   final VoidCallback? onFollowing;
+  final String? regionLabel;
 
   @override
   Widget build(BuildContext context) {
     Widget stat(String label, int n, VoidCallback? onTap) => Expanded(
           child: InkWell(
             onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: FmSpace.s),
               child: Column(children: [
-                Text('$n', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                Text('$n', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
                 Text(label, style: const TextStyle(fontSize: 13, color: FmColors.textSecondary)),
               ]),
             ),
           ),
         );
     return Padding(
-      padding: const EdgeInsets.all(FmSpace.l),
+      padding: const EdgeInsets.fromLTRB(FmSpace.page, FmSpace.s, FmSpace.page, FmSpace.l),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            AppAvatar(url: avatarUrl, name: name, size: 76),
-            const SizedBox(width: FmSpace.l),
+            AppAvatar(url: avatarUrl, name: name, size: 84),
+            const SizedBox(width: 18),
             stat('게시물', counts.posts, null),
             stat('팔로워', counts.followers, onFollowers),
             stat('팔로잉', counts.following, onFollowing),
           ]),
-          const SizedBox(height: FmSpace.m),
-          Row(children: [
-            Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-            if (position != null) ...[
-              const SizedBox(width: FmSpace.s),
-              StatusChip(label: kPositions[position] ?? position!),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              if (position != null)
+                StatusChip(label: kPositions[position] ?? position!, color: FmColors.brandOnSoft),
+              if (regionLabel != null)
+                StatusChip(label: regionLabel!, color: const Color(0xFF3D4652), background: FmColors.surfaceMuted),
             ],
-          ]),
+          ),
           if (bio != null && bio!.isNotEmpty) ...[
-            const SizedBox(height: FmSpace.xs),
-            Text(bio!, style: const TextStyle(fontSize: 14, height: 1.5)),
+            const SizedBox(height: 6),
+            Text(bio!, style: const TextStyle(fontSize: 14, height: 1.55)),
           ],
         ],
       ),

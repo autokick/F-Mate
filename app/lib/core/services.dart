@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart' show HttpClientAdapter;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -49,6 +51,13 @@ class AppServices {
   final ValueNotifier<FeatureConfig> features = ValueNotifier(FeatureConfig.offline());
   /// 읽지 않은 알림 수 (홈 상단 배지)
   final ValueNotifier<int> unreadNotifications = ValueNotifier(0);
+
+  /// '초기화면' 버튼을 누를 때마다 1씩 늘어난다 (아래 탭을 홈으로 되돌림)
+  final ValueNotifier<int> goHome = ValueNotifier(0);
+
+  /// 앱을 쓰는 중에 새로 도착한 알림 (화면 위에 잠깐 띄운다)
+  final ValueNotifier<AppNotification?> incomingNotification = ValueNotifier(null);
+  Timer? _unreadTimer;
   bool serverReachable = false;
   bool pushReady = false;
   String? _pushToken;
@@ -68,7 +77,14 @@ class AppServices {
       return;
     }
     try {
-      unreadNotifications.value = await notifications.unreadCount();
+      final before = unreadNotifications.value;
+      final now = await notifications.unreadCount();
+      unreadNotifications.value = now;
+      // 새 알림이 생겼으면 가장 최근 것을 화면 위에 띄운다
+      if (now > before && _unreadTimer != null) {
+        final latest = await notifications.list();
+        if (latest.isNotEmpty && !latest.first.read) incomingNotification.value = latest.first;
+      }
     } catch (_) {
       // 배지 갱신 실패는 무시
     }
@@ -78,6 +94,9 @@ class AppServices {
   Future<void> onLoggedIn() async {
     if (realtime) chatSocket.start();
     await refreshUnread();
+    // 좋아요·댓글·팔로우 알림을 몇 초 안에 보여주기 위해 주기적으로 확인 (푸시가 없어도 동작)
+    _unreadTimer?.cancel();
+    if (realtime) _unreadTimer = Timer.periodic(const Duration(seconds: 8), (_) => refreshUnread());
     await _setupPush();
   }
 
@@ -97,7 +116,10 @@ class AppServices {
 
   void onLoggedOut() {
     chatSocket.stop();
+    _unreadTimer?.cancel();
+    _unreadTimer = null;
     unreadNotifications.value = 0;
+    incomingNotification.value = null;
   }
 
   /// FCM: PUSH_ENABLED 빌드 + google-services.json 이 있을 때만. 실패해도 앱은 계속 동작(앱 내 알림 목록 사용).

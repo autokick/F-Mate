@@ -73,7 +73,6 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final features = AppScope.of(context).features.value;
     final start = widget.slots.first.startsAt;
     final end = widget.slots.last.endsAt;
     return Scaffold(
@@ -82,8 +81,6 @@ class _ReservationConfirmScreenState extends State<ReservationConfirmScreen> {
         child: ListView(
           padding: const EdgeInsets.all(FmSpace.l),
           children: [
-            if (features.isTestPayment) const Align(alignment: Alignment.centerLeft, child: TestModeBadge()),
-            const SizedBox(height: FmSpace.s),
             FmCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

@@ -254,11 +254,24 @@ public class PostService {
     }
 
     public FeedPage feed(long viewerId, String type, Long cursor, int limit) {
+        return feed(viewerId, type, null, cursor, limit);
+    }
+
+    /** type: following | recommended | latest | venue (venueId 를 태그한 공개 게시물) */
+    public FeedPage feed(long viewerId, String type, Long venueId, Long cursor, int limit) {
         int size = Math.min(Math.max(limit, 1), 30);
         MapSqlParameterSource p = new MapSqlParameterSource("viewer", viewerId).addValue("limit", size + 1)
-                .addValue("cursor", cursor);
+                .addValue("cursor", cursor).addValue("venue", venueId);
         String sql;
         switch (type == null ? "latest" : type) {
+            case "venue" -> {
+                if (venueId == null) throw ApiException.badRequest("VALIDATION_FAILED", "venueId 가 필요해요");
+                sql = SELECT + """
+                         WHERE p.status = 'ACTIVE' AND p.visibility = 'PUBLIC' AND p.venue_id = :venue
+                           AND (:cursor::bigint IS NULL OR p.id < :cursor)
+                           AND can_view_post(:viewer, p.id)
+                         ORDER BY p.id DESC LIMIT :limit""";
+            }
             case "following" -> sql = SELECT + """
                      WHERE p.status = 'ACTIVE' AND (:cursor::bigint IS NULL OR p.id < :cursor)
                        AND (p.author_id = :viewer OR p.author_id IN
@@ -266,11 +279,11 @@ public class PostService {
                        AND can_view_post(:viewer, p.id)
                      ORDER BY p.id DESC LIMIT :limit""";
             case "recommended" -> {
-                // 최근 14일 공개 게시물을 반응(좋아요 + 댓글x2)과 시간 경과로 점수화. cursor 는 offset 으로 쓴다.
+                // 최근 90일 공개 게시물을 반응(좋아요 + 댓글x2)과 시간 경과로 점수화. cursor 는 offset 으로 쓴다.
                 p.addValue("offset", cursor == null ? 0 : cursor);
                 sql = SELECT + """
                          WHERE p.status = 'ACTIVE' AND p.visibility = 'PUBLIC'
-                           AND p.created_at > now() - interval '14 days'
+                           AND p.created_at > now() - interval '90 days'
                            AND can_view_post(:viewer, p.id)
                          ORDER BY (p.like_count + 2 * p.comment_count + 1)
                                   / power(extract(epoch FROM (now() - p.created_at)) / 3600 + 2, 1.5) DESC, p.id DESC

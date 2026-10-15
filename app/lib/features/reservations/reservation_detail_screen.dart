@@ -121,7 +121,6 @@ class _ReservationDetailScreenState extends State<ReservationDetailScreen> {
                 ],
                 if (pay != null) ...[
                   const SectionTitle('결제'),
-                  if (pay.mode != 'LIVE') const Align(alignment: Alignment.centerLeft, child: TestModeBadge()),
                   InfoRow('상태', _payLabel(pay.status)),
                   if (pay.method != null) InfoRow('수단', pay.method!),
                   if (pay.approvedAmount != null) InfoRow('승인 금액', Fmt.won(pay.approvedAmount)),

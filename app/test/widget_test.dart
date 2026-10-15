@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import '../lib/app.dart';
 import '../lib/core/services.dart';
 import '../lib/core/theme.dart';
-import '../lib/features/booking/booking_screen.dart';
 import '../lib/features/venues/nearby_real_screen.dart';
 import '../lib/features/venues/venue_detail_screen.dart';
 import '../lib/features/venues/venues_screen.dart';
@@ -30,7 +29,7 @@ Future<void> startApp(WidgetTester tester, {FakeServer? server}) async {
   await tester.pumpAndSettle();
 }
 
-Finder navItem(String label) => find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
+Finder navItem(String label) => find.byKey(Key('nav_$label'));
 
 Widget wrap(AppServices s, Widget child) =>
     AppScope(services: s, child: MaterialApp(theme: buildFmTheme(), home: child));
@@ -91,17 +90,18 @@ void main() {
   });
 
   group('둘러보기', () {
-    testWidgets('5개 탭과 비로그인 안내', (tester) async {
+    testWidgets('탭(홈·구장·올리기·채팅·마이)과 비로그인 안내', (tester) async {
       await startApp(tester);
       await tester.tap(find.byKey(const Key('browse_button')));
       await tester.pumpAndSettle();
 
-      for (final label in ['홈', '예약', '풋살장', '채팅', '마이']) {
+      for (final label in ['홈', '구장', '채팅', '마이']) {
         expect(navItem(label), findsOneWidget, reason: '$label 탭');
       }
+      expect(find.byKey(const Key('nav_upload')), findsOneWidget);
       expect(find.text('로그인하고 풋살 피드를 보세요'), findsOneWidget);
 
-      await tester.tap(navItem('예약'));
+      await tester.tap(navItem('구장'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('date_strip')), findsOneWidget);
       expect(find.text('화성 테스트 풋살장'), findsOneWidget, reason: '서버가 준 구장만 보여준다');
@@ -135,11 +135,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.widgetWithText(InputChip, '경기'), findsOneWidget);
-      expect(find.widgetWithText(InputChip, '실내'), findsOneWidget);
-      // 칩의 x 를 누르면 그 조건만 해제
-      await tester.tap(find.descendant(of: find.widgetWithText(InputChip, '실내'), matching: find.byType(Icon)).last);
+      final indoor = find.widgetWithText(FilterChip, '실내');
+      expect(tester.widget<FilterChip>(indoor).selected, isTrue);
+      // 빠른 필터 칩을 다시 누르면 그 조건만 해제
+      await tester.ensureVisible(indoor);
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(InputChip, '실내'), findsNothing);
+      await tester.tap(indoor);
+      await tester.pumpAndSettle();
+      expect(tester.widget<FilterChip>(find.widgetWithText(FilterChip, '실내')).selected, isFalse);
       expect(find.widgetWithText(InputChip, '경기'), findsOneWidget);
     });
   });
@@ -167,12 +170,14 @@ void main() {
     testWidgets('날짜를 바꾸면 선택 날짜 문구가 바뀐다', (tester) async {
       usePhoneSize(tester);
       final s = fakeServices();
-      await tester.pumpWidget(wrap(s, BookingScreen(today: DateTime(2026, 10, 10))));
+      await tester.pumpWidget(wrap(s, VenuesScreen(today: DateTime(2026, 10, 10))));
       await tester.pumpAndSettle();
-      expect(find.text('10월 10일(토)'), findsOneWidget);
+      String label() => tester.widget<Text>(find.byKey(const Key('selected_date_label'))).data!;
+      expect(label(), startsWith('10월 10일(토)'));
       await tester.tap(find.descendant(of: find.byKey(const Key('date_strip')), matching: find.text('12')));
       await tester.pumpAndSettle();
-      expect(find.text('10월 12일(월)'), findsOneWidget);
+      expect(label(), startsWith('10월 12일(월)'));
+      expect(find.text('화성 테스트 풋살장'), findsOneWidget);
     });
 
     testWidgets('구장 상세: 연속 슬롯을 고르면 합계가 계산되고 마감 슬롯은 못 고른다', (tester) async {

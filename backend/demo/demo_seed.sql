@@ -48,6 +48,11 @@ BEGIN
     END CASE;
   END LOOP;
 
+  -- 공공데이터로 넣은 구장은 이 운영자 계정이 관리한다 (사진·편의시설·요금 수정)
+  INSERT INTO venue_operators (venue_id, user_id, role)
+  SELECT v.id, u_owner, 'OWNER' FROM futsal_venues v WHERE v.data_source = 'PARTNER_API'
+  ON CONFLICT DO NOTHING;
+
   RAISE NOTICE '시연 데이터를 넣었습니다: 시연용 운영자·관리자 계정 (이미 있으면 그대로 둠)';
 END
 $demo$;

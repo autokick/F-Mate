@@ -21,6 +21,15 @@ class AppConfig {
 
   static const String appVersion = '1.0.0';
 
+  /// 오른쪽 위 '초기화면' 버튼 (전시용, 기본 켜짐). 끄려면 --dart-define=HOME_BUTTON=false
+  static const bool homeButton = bool.fromEnvironment('HOME_BUTTON', defaultValue: true);
+
+  /// 위치를 모를 때 거리 계산 기준점 (기본: 서울 중랑구청). 에뮬레이터는 위치가 미국으로 잡혀 있어서
+  /// 내 위치를 쓰지 않을 때는 이 지점에서 가까운 순으로 보여준다.
+  static const String defaultAreaName = String.fromEnvironment('DEFAULT_AREA', defaultValue: '중랑구');
+  static final double defaultLat = double.tryParse(const String.fromEnvironment('DEFAULT_LAT')) ?? 37.6066;
+  static final double defaultLng = double.tryParse(const String.fromEnvironment('DEFAULT_LNG')) ?? 127.0927;
+
   /// WebSocket 주소 (http → ws, https → wss)
   static String get chatSocketUrl {
     final base = apiBaseUrl.endsWith('/') ? apiBaseUrl.substring(0, apiBaseUrl.length - 1) : apiBaseUrl;
